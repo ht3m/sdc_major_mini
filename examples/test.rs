@@ -1,4 +1,7 @@
-use std::{f64::consts::FRAC_PI_2, f64::consts::FRAC_PI_4, time::Duration};
+use std::{
+    f64::consts::{FRAC_PI_3, FRAC_PI_4},
+    time::Duration,
+};
 
 use libjaka::JakaMini2;
 use robot_behavior::behavior::*;
@@ -10,10 +13,10 @@ fn main() -> anyhow::Result<()> {
     let mut physics_engine = RsBullet::new(rsbullet::Mode::Gui)?;
 
     physics_engine
-        .add_search_path("F:\\2025 Autumn\\sdc_major_workspace\\sdc_major\\asserts")?
+        .add_search_path("./asserts")?
         .set_gravity([0., 0., -10.])?
         .set_step_time(Duration::from_secs_f64(1. / 240.))?;
-    renderer.add_search_path("F:\\2025 Autumn\\sdc_major_workspace\\sdc_major\\asserts")?;
+    renderer.add_search_path("./asserts")?;
 
     let mut robot_1 = physics_engine
         .robot_builder::<JakaMini2>("robot_1")
@@ -42,7 +45,7 @@ fn main() -> anyhow::Result<()> {
     for _ in 0..100 {
         physics_engine.step()?;
     }
-    robot_1.move_joint(&[FRAC_PI_2; 6])?;
+    robot_1.move_joint(&[FRAC_PI_3; 6])?;
     robot_2.move_joint(&[FRAC_PI_4; 6])?;
     loop {
         physics_engine.step()?;

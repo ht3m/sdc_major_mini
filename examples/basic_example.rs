@@ -1,5 +1,6 @@
 use libjaka::JakaMini2;
-use robot_behavior::behavior::*;
+use robot_behavior::{MotionType, behavior::*};
+use std::f64::consts::FRAC_PI_6;
 
 fn main() -> anyhow::Result<()> {
     let mut robot = JakaMini2::new("10.5.5.100");
@@ -9,6 +10,9 @@ fn main() -> anyhow::Result<()> {
     robot.enable()?;
 
     // 此时你才可以发送运动指令
+    //TODO:设置运动
+    robot.move_joint(&[FRAC_PI_6; 6])?;
+    robot.move_to(MotionType::Joint([0.; 6]))?;
 
     robot.disable()?;
     // 完全等同于内置函数 robot._power_off()?;
