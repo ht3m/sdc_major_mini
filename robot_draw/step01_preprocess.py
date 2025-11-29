@@ -67,9 +67,8 @@ class ImageProcessor:
         第一步：Otsu 二值化
         目标：将图片变成纯黑底、纯白线的图像。
         """
-        # COLOR_BGR2GRAY 已经在 init 里做了，这里直接用 gray_img
         # 使用 THRESH_BINARY_INV + THRESH_OTSU
-        # INV 的原因是：我们希望线条是白色的（前景），背景是黑色的
+        # INV ：最终线条是白色的（前景），背景是黑色的
         thresh_val, self.binary_img = cv2.threshold(
             self.gray_img, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
         )
@@ -86,7 +85,7 @@ class ImageProcessor:
             raise ValueError("请先运行 binarize_otsu！")
 
         # 1. 定义核 (Kernel)
-        # 就像你选画笔的笔头大小。3x3 是一个标准的方形笔头。
+        # 扫描的笔头，3x3 是一个标准的方形笔头。
         kernel = np.ones((kernel_size, kernel_size), np.uint8)
         
         # 2. 执行闭运算
@@ -120,13 +119,12 @@ class ImageProcessor:
         print(f"[Info] 初步发现 {num_labels - 1} 个连通区域 (Label 0 是背景)")
 
         kept_count = 0
-        # 3. 遍历所有区域 (从1开始，因为0是背景黑色)
+        # 3. 遍历所有白色区域 (从1开始，因为0是背景黑色)
         for i in range(1, num_labels):
             area = stats[i, cv2.CC_STAT_AREA]
             
             if area >= min_area:
                 # 如果面积达标，就把这个区域“复制”到新画布上
-                # labels == i 会生成一个掩码，把对应区域设为 255 (白)
                 clean_img[labels == i] = 255
                 kept_count += 1
             # else: 面积太小，不做操作，新画布上默认就是黑的，相当于删除了
@@ -156,13 +154,13 @@ class ImageProcessor:
 # ==========================================
 if __name__ == "__main__":
     # --- 配置 ---
-    # 请准备一张图片，命名为 test.jpg 放在代码同一目录下
+    # 图片命名为 test.jpg 放在代码同一目录下
     current_dir = os.path.dirname(os.path.abspath(__file__))
     IMAGE_PATH = os.path.join(current_dir, "test.jpg")
     
     try:
         # 1. 初始化并加载、标准化图片
-        # 我们设定最大边长为 1000 像素，这个尺寸对于后续处理比较合适
+        # 设定最大边长为 1000 像素
         processor = ImageProcessor(IMAGE_PATH, target_max_size=1000)
         
         # 2. 执行 Otsu 二值化
@@ -191,7 +189,7 @@ if __name__ == "__main__":
         plt.show()
         
         # 保存图片
-        #cv2.imwrite(os.path.join(current_dir, "output_02_closed.png"), closed_result)
+        cv2.imwrite(os.path.join(current_dir, "step01_final_img.png"), final_img)
     except FileNotFoundError as e:
         print(f"\n❌ 错误: {e}")
         print(f"请确保在代码目录下放了一张名为 '{IMAGE_PATH}' 的图片用于测试。")
