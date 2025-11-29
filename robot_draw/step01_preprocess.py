@@ -156,12 +156,14 @@ if __name__ == "__main__":
     # --- 配置 ---
     # 图片命名为 test.jpg 放在代码同一目录下
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    IMAGE_PATH = os.path.join(current_dir, "test.jpg")
+    img_dir = os.path.join(current_dir, "img")
+    IMAGE_FILE = os.path.join(img_dir, "test.jpg")
+    OUTPUT_FILE = os.path.join(img_dir, "step01_final_img.png")
     
     try:
         # 1. 初始化并加载、标准化图片
         # 设定最大边长为 1000 像素
-        processor = ImageProcessor(IMAGE_PATH, target_max_size=1000)
+        processor = ImageProcessor(IMAGE_FILE, target_max_size=1000)
         
         # 2. 执行 Otsu 二值化
         processor.binarize_otsu()
@@ -189,9 +191,9 @@ if __name__ == "__main__":
         plt.show()
         
         # 保存图片
-        cv2.imwrite(os.path.join(current_dir, "step01_final_img.png"), final_img)
+        cv2.imwrite(OUTPUT_FILE, final_img)
     except FileNotFoundError as e:
         print(f"\n❌ 错误: {e}")
-        print(f"请确保在代码目录下放了一张名为 '{IMAGE_PATH}' 的图片用于测试。")
+        print(f"请确保在代码目录下放了一张名为 '{IMAGE_FILE}' 的图片用于测试。")
     except Exception as e:
         print(f"\n❌ 发生其他错误: {e}")
