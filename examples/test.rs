@@ -1,10 +1,11 @@
 use std::{
-    f64::consts::{FRAC_PI_3, FRAC_PI_4},
+    f64::consts::{FRAC_PI_2, FRAC_PI_4},
     time::Duration,
 };
 
 use libjaka::JakaMini2;
-use robot_behavior::behavior::*;
+use nalgebra as na;
+use robot_behavior::{Pose, behavior::*};
 use roplat_rerun::RerunHost;
 use rsbullet::RsBullet;
 
@@ -45,8 +46,12 @@ fn main() -> anyhow::Result<()> {
     for _ in 0..100 {
         physics_engine.step()?;
     }
-    robot_1.move_joint(&[FRAC_PI_3; 6])?;
+    robot_1.move_joint(&[FRAC_PI_2; 6])?;
     robot_2.move_joint(&[FRAC_PI_4; 6])?;
+    for _ in 0..500 {
+        physics_engine.step()?;
+    }
+    robot_1.move_cartesian(&Pose::Quat(na::Isometry3::identity()))?;
     loop {
         physics_engine.step()?;
     }

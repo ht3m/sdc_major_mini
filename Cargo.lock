@@ -4869,6 +4869,8 @@ dependencies = [
  "robot_behavior",
  "roplat_rerun",
  "rsbullet",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
