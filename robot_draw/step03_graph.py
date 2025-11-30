@@ -157,7 +157,8 @@ class GraphBuilder:
             nearest_node_pos = node_coords[idxs[best_idx_in_segment]] # (x,y)
             
             # 阈值判断
-            if min_dist < 20.0:
+            #TODO
+            if min_dist < 5.0:
                 # --- 情况 A: 这是一个分支/尾巴 ---
                 # 1. 整理像素顺序：从“接触点”开始，理顺整条线
                 # 接触点就是 segment 中离节点最近的那个点
