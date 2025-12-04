@@ -136,7 +136,7 @@ class TrajectoryPlanner:
         sub_strokes.append(current_sub)
         return sub_strokes
 
-    def smooth_and_resample(self, smoothing=5.0, step_size=2.0):
+    def smooth_and_resample(self, smoothing=10.0, step_size=2.0):
         print(f"[Smooth] 锐角打断 -> B样条平滑 (s={smoothing}) -> 重采样...")
         final_strokes = []
         for stroke in self.strokes:

@@ -173,7 +173,7 @@ if __name__ == "__main__":
         processor.apply_morphology(kernel_size=3)
 
         #4. 去噪
-        final_img = processor.remove_small_noise(min_area=100)
+        final_img = processor.remove_small_noise(min_area=10)
 
         # 5. 显示结果
         # 显示原图 (灰度)
