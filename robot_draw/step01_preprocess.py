@@ -158,7 +158,7 @@ if __name__ == "__main__":
     current_dir = os.path.dirname(os.path.abspath(__file__))
     img_dir = os.path.join(current_dir, "img")
     IMAGE_FILE = os.path.join(img_dir, "test.jpg")
-    OUTPUT_FILE = os.path.join(img_dir, "step01_final_img.png")
+    OUTPUT_FILE = os.path.join(img_dir, "step01_preprocess.png")
     
     try:
         # 1. 初始化并加载、标准化图片

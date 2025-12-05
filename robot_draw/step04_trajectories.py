@@ -311,7 +311,7 @@ if __name__ == "__main__":
     img_dir = os.path.join(current_dir, "img")
     GRAPH_FILE = os.path.join(img_dir, "graph_data.pkl")
     JSON_FILE = os.path.join(img_dir, "robot_paths.json")
-    OUTPUT_VIS_FILE = os.path.join(img_dir, "step04_path_preview.png")
+    OUTPUT_VIS_FILE = os.path.join(img_dir, "step04_path.png")
     
     try:
         planner = TrajectoryPlanner(GRAPH_FILE)
