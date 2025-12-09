@@ -246,32 +246,106 @@ class TrajectoryPlanner:
                     final_strokes.append(seg)
         self.strokes = final_strokes
 
-    def export_json(self, output_path, canvas_width_mm=200):
-        print(f"[Export] 导出 JSON (宽: {canvas_width_mm}mm)...")
+    def _resample_path_physical(self, points_mm, step_mm=0.5):
+        """
+        【新增辅助函数】物理空间重采样
+        输入单位为 mm 的点集，输出按 step_mm 均匀分布的点集
+        """
+        if len(points_mm) < 2:
+            return points_mm
+            
+        pts = np.array(points_mm)
+        # 计算每段距离
+        dists = np.sqrt(np.sum(np.diff(pts, axis=0)**2, axis=1))
+        # 计算累积距离 [0, d1, d1+d2, ...]
+        cumulative_dist = np.insert(np.cumsum(dists), 0, 0)
+        total_length = cumulative_dist[-1]
+        
+        # 计算需要多少个点
+        if total_length <= step_mm:
+            return points_mm # 太短了，不重采样
+            
+        num_points = int(total_length / step_mm)
+        if num_points < 2: num_points = 2
+        
+        # 生成均匀的目标距离
+        target_dists = np.linspace(0, total_length, num_points)
+        
+        # 线性插值
+        new_x = np.interp(target_dists, cumulative_dist, pts[:, 0])
+        new_y = np.interp(target_dists, cumulative_dist, pts[:, 1])
+        
+        return list(zip(new_x, new_y))
+
+    def export_json(self, output_path, canvas_size_mm=(150, 150), physical_step_mm=1.0):
+        """
+        导出 JSON (物理空间均匀重采样模式)
+        1. 自适应撑满 (保持长宽比)
+        2. 不自动居中 (原点为包围盒左下角)
+        3. 【关键】在物理空间按 mm 重采样，确保点距恒定
+        """
+        target_w, target_h = canvas_size_mm
+        print(f"[Export] 导出 JSON (自适应撑满 + 物理重采样)...")
+        print(f"       目标画布: {target_w}mm x {target_h}mm")
+        print(f"       物理点间距: {physical_step_mm} mm (无论画布多大，点距恒定)")
+        
         all_points = [p for s in self.strokes for p in s]
         if not all_points: return
         all_points = np.array(all_points)
+        
+        # 1. 计算包围盒
         min_x, max_x = np.min(all_points[:,0]), np.max(all_points[:,0])
         min_y, max_y = np.min(all_points[:,1]), np.max(all_points[:,1])
-        pixel_width = max_x - min_x
-        if pixel_width == 0: pixel_width = 1
-        scale = canvas_width_mm / pixel_width
+        
+        content_w_px = max_x - min_x
+        content_h_px = max_y - min_y
+        
+        if content_w_px == 0: content_w_px = 1
+        if content_h_px == 0: content_h_px = 1
+        
+        # 2. 计算缩放比例 (自适应撑满，保持长宽比)
+        scale_x = target_w / content_w_px
+        scale_y = target_h / content_h_px
+        final_scale = min(scale_x, scale_y)
         
         json_data = {
-            "meta": {"total_strokes": len(self.strokes), "scale_factor": scale, "canvas_width_mm": canvas_width_mm},
+            "meta": {
+                "total_strokes": len(self.strokes), 
+                "scale_factor": final_scale, 
+                "canvas_width_mm": target_w,
+                "physical_step_mm": physical_step_mm,
+                "strategy": "uniform_physical_sampling_no_center"
+            },
             "trajectories": []
         }
+        
+        # 3. 转换 + 重采样
         for stroke in self.strokes:
-            traj = []
+            # --- 第一步：转成物理坐标 (mm) ---
+            raw_mm_traj = []
             for x, y in stroke:
-                world_x = (x - min_x) * scale
-                world_y = (max_y - y) * scale 
-                traj.append([round(world_x, 3), round(world_y, 3)])
-            json_data["trajectories"].append(traj)
+                # 坐标转换：
+                # X: 减去 min_x (左对齐) -> 缩放
+                # Y: max_y 减去 y (底部对齐, 翻转坐标系) -> 缩放
+                # 结果：(0,0) 是图案内容的左下角
+                world_x = (x - min_x) * final_scale
+                world_y = (max_y - y) * final_scale 
+                raw_mm_traj.append([world_x, world_y])
+            
+            # --- 第二步：在物理空间重采样 (核心修改) ---
+            # 这一步保证了无论 final_scale 是大是小，输出的点间距永远是 physical_step_mm
+            resampled_mm_traj = self._resample_path_physical(raw_mm_traj, step_mm=physical_step_mm)
+            
+            # --- 第三步：保留 3 位小数并存入 ---
+            final_traj = [[round(p[0], 3), round(p[1], 3)] for p in resampled_mm_traj]
+            
+            if final_traj:
+                json_data["trajectories"].append(final_traj)
             
         with open(output_path, 'w') as f:
             json.dump(json_data, f, indent=2)
         print(f"✅ JSON 已保存至: {output_path}")
+        print(f"   (缩放比例: {final_scale:.4f}, 物理点距: {physical_step_mm}mm)")
 
     def visualize_order(self, save_path=None):
         plt.figure(figsize=(12, 12))
@@ -310,7 +384,7 @@ if __name__ == "__main__":
     current_dir = os.path.dirname(os.path.abspath(__file__))
     img_dir = os.path.join(current_dir, "img")
     GRAPH_FILE = os.path.join(img_dir, "graph_data.pkl")
-    JSON_FILE = os.path.join(img_dir, "robot_paths.json")
+    JSON_FILE = os.path.join(img_dir, "step04_robot_paths.json")
     OUTPUT_VIS_FILE = os.path.join(img_dir, "step04_path.png")
     
     try:
@@ -323,7 +397,7 @@ if __name__ == "__main__":
         planner.smooth_and_resample(smoothing=5.0, step_size=2.0)
         
         # 3. 导出
-        planner.export_json(JSON_FILE, canvas_width_mm=150)
+        planner.export_json(JSON_FILE, canvas_size_mm=(150, 150), physical_step_mm=1.0)
         
         # 4. 可视化
         planner.visualize_order(save_path=OUTPUT_VIS_FILE)
