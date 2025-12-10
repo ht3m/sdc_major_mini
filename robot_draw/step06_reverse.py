@@ -5,27 +5,33 @@ from scipy.optimize import minimize
 
 class JakaRobotIK:
     def __init__(self):
-        # --- JAKA Mini 2 D-H 参数 (基于之前的图纸) ---
-        # 单位: mm
-        # alpha, a, d, theta_offset
-        # 注意：数值解法中，d4+d5+d6 总长匹配即可，内部拆分主要影响中间关节位置，不影响末端到达
         self.DH_PARAMS = [
-            # alpha(i-1), a(i-1), d(i), theta_offset(i)
-            [np.pi/2,  0,      187.0,  0],          # Joint 1
-            [0,        210.0,  0,      0],          # Joint 2
-            [0,        210.5,  0,      0],          # Joint 3
-            [np.pi/2,  0,      80.0,   0],          # Joint 4 (估算)
-            [-np.pi/2, 0,      40.0,   0],          # Joint 5 (估算)
-            [0,        0,      39.3,   0]           # Joint 6 (估算, 总 wrist=159.3)
+            [0,        0,      0,      0],          # J1
+            [np.pi/2,  0,      187.0,  0],          # J2
+            [0,        210.0,  0,      0],          # J3
+            [-np.pi/2, 210.5,  6.0,    0],          # J4 
+            [np.pi/2,  0,      0,      0],          # J5
+            [np.pi/2,  159.3,  0,      0]           # J6
         ]
         
+        # --- 【新增】关节物理限位 (对应 Rust 代码) ---
+        limit_large = 2 * np.pi          # +/- 360度
+        limit_small = (2 * np.pi) / 3.0  # +/- 120度
+        
+        self.JOINT_LIMITS = [
+            (-limit_large, limit_large), # J1
+            (-limit_small, limit_small), # J2 (受限)
+            (-limit_small, limit_small), # J3 (受限)
+            (-limit_large, limit_large), # J4
+            (-limit_small, limit_small), # J5 (受限)
+            (-limit_large, limit_large)  # J6
+        ]
+
     def dh_matrix(self, theta, alpha, a, d):
-        """ 标准 D-H 变换矩阵 """
         c = np.cos(theta)
         s = np.sin(theta)
         ca = np.cos(alpha)
         sa = np.sin(alpha)
-        
         return np.array([
             [c, -s*ca, s*sa, a*c],
             [s, c*ca, -c*sa, a*s],
@@ -34,67 +40,63 @@ class JakaRobotIK:
         ])
 
     def forward_kinematics(self, joints_rad):
-        """
-        正运动学：计算给定关节角下的末端位姿矩阵 T (4x4)
-        """
         T = np.eye(4)
-        
         for i, (alpha, a, d, offset) in enumerate(self.DH_PARAMS):
             theta = joints_rad[i] + offset
             Ti = self.dh_matrix(theta, alpha, a, d)
             T = T @ Ti
-            
         return T
 
     def inverse_kinematics(self, target_pos, target_rpy_rad, seed_joints):
-        """
-        数值逆解 (Optimization based IK)
-        :param target_pos: [x, y, z] 目标位置
-        :param target_rpy_rad: [roll, pitch, yaw] 目标欧拉角 (弧度)
-        :param seed_joints: 初始猜测关节角 (通常用上一个点的解)
-        """
-        
-        # 1. 构建目标旋转矩阵 (R_target)
+        # 1. 构建目标旋转矩阵
         rx, ry, rz = target_rpy_rad
-        # ZYX 欧拉角旋转顺序 (这里的定义需与实际需求匹配，通常 Robotic 常用 ZYZ 或 ZYX)
-        # 这里使用简单的固定轴 XYZ 旋转矩阵构建
         Rx = np.array([[1, 0, 0], [0, np.cos(rx), -np.sin(rx)], [0, np.sin(rx), np.cos(rx)]])
         Ry = np.array([[np.cos(ry), 0, np.sin(ry)], [0, 1, 0], [-np.sin(ry), 0, np.cos(ry)]])
         Rz = np.array([[np.cos(rz), -np.sin(rz), 0], [np.sin(rz), np.cos(rz), 0], [0, 0, 1]])
-        
-        # 注意：这里假设 target_rpy 是想让法兰盘转到特定的空间姿态
-        # 如果是 "正对X正方向(Pitch 90)"，意味着法兰Z轴指向世界坐标X轴
         R_target = Rz @ Ry @ Rx
 
-        # 2. 定义优化误差函数
+        # 2. 误差函数
         def error_function(current_joints):
+            # 加入惩罚项：如果超出范围，误差无穷大 (虽然 bounds 已经限制了，但加一层保险)
+            # for i, (low, high) in enumerate(self.JOINT_LIMITS):
+            #     if not (low <= current_joints[i] <= high):
+            #         return 1e9
+            
             T_current = self.forward_kinematics(current_joints)
             P_current = T_current[:3, 3]
             R_current = T_current[:3, :3]
-            
-            # 位置误差 (欧氏距离)
             pos_error = np.linalg.norm(P_current - np.array(target_pos))
-            
-            # 姿态误差 (旋转矩阵差值的范数)
             rot_error = np.linalg.norm(R_current - R_target)
             
-            # 权重：位置通常比姿态更重要一点，或者设为 1:1
-            return pos_error * 1.0 + rot_error * 0.5
+            # 权重：位置优先，姿态次之
+            return pos_error * 1.0 + rot_error * 0.1
 
-        # 3. 求解
-        # 关节限位 (设为 -2pi 到 2pi)
-        bounds = [(-2*np.pi, 2*np.pi)] * 6
-        
+        # 3. 求解 (传入严格的 bounds)
         res = minimize(
             error_function, 
             seed_joints, 
             method='SLSQP', 
-            bounds=bounds, 
-            tol=1e-5,
-            options={'maxiter': 50} # 实时性要求不高，可以多迭代几次
+            bounds=self.JOINT_LIMITS,  # 【关键修改】使用真实的物理限位
+            tol=1e-4,
+            options={'maxiter': 100}
         )
         
-        return res.x, res.fun # 返回角度和误差值
+        # 4. 二次检查 (Double Check)
+        # 即使求解器收敛，也要确认结果是否真的在范围内
+        final_joints = res.x
+        is_valid = True
+        for i, (low, high) in enumerate(self.JOINT_LIMITS):
+            # 允许 1度 (0.017rad) 的微小浮动误差
+            if not (low - 0.02 <= final_joints[i] <= high + 0.02):
+                is_valid = False
+                break
+        
+        # 如果解无效，强制返回错误标志（通过增加误差值）
+        final_error = res.fun
+        if not is_valid:
+            final_error = 999.0 # 标记为无效解
+
+        return final_joints, final_error
 
 def process_and_solve(input_file, output_file, draw_z_mm, pitch_angle_deg):
     if not os.path.exists(input_file):
