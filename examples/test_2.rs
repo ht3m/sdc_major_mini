@@ -35,12 +35,7 @@ fn main() -> anyhow::Result<()> {
     for _ in 0..100 {
         physics_engine.step()?;
     }
-    robot_1.move_joint(&[        342.5,
-        117.14,
-        -85.2,
-        -336.87,
-        -14.93,
-        -44.03])?;
+    robot_1.move_joint(&[ 0.0200, -0.7216, -1.5476, -0.0000, -0.8724, 0.0200])?;
     // robot_1.move_joint(&[0.0; 6])?;
     for _ in 0..500 {
         physics_engine.step()?;

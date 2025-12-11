@@ -384,7 +384,7 @@ if __name__ == "__main__":
     current_dir = os.path.dirname(os.path.abspath(__file__))
     img_dir = os.path.join(current_dir, "img")
     GRAPH_FILE = os.path.join(img_dir, "graph_data.pkl")
-    JSON_FILE = os.path.join(img_dir, "step04_robot_paths.json")
+    JSON_FILE = os.path.join(img_dir, "step04_path.json")
     OUTPUT_VIS_FILE = os.path.join(img_dir, "step04_path.png")
     
     try:
@@ -397,7 +397,7 @@ if __name__ == "__main__":
         planner.smooth_and_resample(smoothing=5.0, step_size=2.0)
         
         # 3. 导出
-        planner.export_json(JSON_FILE, canvas_size_mm=(150, 150), physical_step_mm=1.0)
+        planner.export_json(JSON_FILE, canvas_size_mm=(250, 250), physical_step_mm=1.0)
         
         # 4. 可视化
         planner.visualize_order(save_path=OUTPUT_VIS_FILE)
