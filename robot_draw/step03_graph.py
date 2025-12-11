@@ -445,8 +445,8 @@ class GraphBuilder:
 if __name__ == "__main__":
     current_dir = os.path.dirname(os.path.abspath(__file__))
     img_dir = os.path.join(current_dir, "img")
-    INPUT_FILE = os.path.join(img_dir, "step02_skeleton_img.png") # 注意确认你的输入文件名
-    OUTPUT_VIS_FILE = os.path.join(img_dir, "step03_final_graph.png")
+    INPUT_FILE = os.path.join(img_dir, "step02_skeleton.png") # 注意确认你的输入文件名
+    OUTPUT_VIS_FILE = os.path.join(img_dir, "step03_graph.png")
 
     try:
         builder = GraphBuilder(INPUT_FILE)
@@ -455,10 +455,10 @@ if __name__ == "__main__":
         builder.build_graph() 
         
         # 2. 合并节点 (使用延迟删除，避免断链)
-        builder.merge_close_nodes(distance_threshold=10.0) 
+        builder.merge_close_nodes(distance_threshold=5.0) 
         
         # 3. 兜底扫描 (挽救合并或追踪中遗失的路径)
-        builder.salvage_missing_segments(min_length=15)
+        builder.salvage_missing_segments(min_length=10)
 
         # 4. 美容 (修剪毛刺 & 去噪) ---
         builder.prune_spurs(min_length=5) # 小于20像素的短枝剪掉

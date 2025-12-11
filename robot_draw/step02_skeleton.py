@@ -79,8 +79,8 @@ class Skeletonizer:
 if __name__ == "__main__":
     current_dir = os.path.dirname(os.path.abspath(__file__))
     img_dir = os.path.join(current_dir, "img")
-    INPUT_FILE = os.path.join(img_dir, "step01_final_img.png")
-    OUTPUT_FILE = os.path.join(img_dir, "step02_skeleton_img.png")
+    INPUT_FILE = os.path.join(img_dir, "step01_preprocess.png")
+    OUTPUT_FILE = os.path.join(img_dir, "step02_skeleton.png")
 
     try:
         # 1. 初始化

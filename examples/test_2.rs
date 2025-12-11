@@ -6,38 +6,40 @@ use std::{
 use libjaka::JakaMini2;
 use nalgebra as na;
 use robot_behavior::{Pose, behavior::*};
+use roplat_rerun::RerunHost;
+use rsbullet::RsBullet;
+
 fn main() -> anyhow::Result<()> {
+    let mut renderer = RerunHost::new("jaka_dual")?;
     let mut physics_engine = RsBullet::new(rsbullet::Mode::Gui)?;
 
     physics_engine
         .add_search_path("./asserts")?
-        .set_gravity([0., 0., -9.81])?
+        .set_gravity([0., 0., -10.])?
         .set_step_time(Duration::from_secs_f64(1. / 240.))?;
     renderer.add_search_path("./asserts")?;
 
-    let mut robot = physics_engine
+    let mut robot_1 = physics_engine
         .robot_builder::<JakaMini2>("robot_1")
         .base([0.0, 0.0, 0.0])
         .base_fixed(true)
         .load()?;
 
-    let robot_renderer = renderer
+    let robot_1_renderer = renderer
         .robot_builder::<JakaMini2>("robot_1")
         .base([0.0, 0.0, 0.0])
         .base_fixed(true)
         .load()?;
-
-    robot_renderer.attach_from(&mut robot)?;
+    robot_1_renderer.attach_from(&mut robot_1)?;
 
     for _ in 0..100 {
         physics_engine.step()?;
     }
-    robot_1.move_joint(&[FRAC_PI_2; 6])?;
-    robot_2.move_joint(&[FRAC_PI_4; 6])?;
+    robot_1.move_joint(&[FRAC_PI_2, 0.0, 0.0, 0.0, 0.0, 0.0])?;
+    // robot_1.move_joint(&[0.0; 6])?;
     for _ in 0..500 {
         physics_engine.step()?;
     }
-    robot_1.move_cartesian(&Pose::Quat(na::Isometry3::identity()))?;
     loop {
         physics_engine.step()?;
     }

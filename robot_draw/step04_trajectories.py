@@ -18,22 +18,28 @@ class TrajectoryPlanner:
         self.strokes = [] 
 
     def generate_trajectories(self):
-        """ 贪婪算法规划路径 """
-        print("[Plan] 开始规划路径...")
+        """ 
+        【优化版】惯性贪婪路径规划 (Lookahead-5 滤波)
+        在交叉路口优先选择角度最顺滑的路径。
+        改进：计算角度时取 5 个像素的跨度，消除交叉点附近的像素噪点干扰。
+        """
+        print("[Plan] 开始规划路径 (惯性导向 + 5点滤波)...")
+        
+        # 滤波步长：取5个点来计算向量，更加稳定
+        LOOK_STEPS = 5
         
         unread_edges = []
-        # ---【核心修复】---
-        # 之前这里有 if u != v，导致孤立环路（自环）被过滤了
-        # 现在我们要允许 u == v 的情况
         for u, v, data in self.graph.edges(data=True):
             unread_edges.append((u, v, data.get('path', [])))
-        # ------------------
         
         visited_indices = set()
         current_pos = None
         
         while len(visited_indices) < len(unread_edges):
-            best_edge_idx = -1; best_direction = 1; min_dist = float('inf')
+            # --- A. 寻找下一笔起点 (距离最近) ---
+            best_edge_idx = -1
+            best_direction = 1 
+            min_dist = float('inf')
             
             for i in range(len(unread_edges)):
                 if i in visited_indices: continue
@@ -49,6 +55,7 @@ class TrajectoryPlanner:
                     if dist_u < min_dist: min_dist = dist_u; best_edge_idx = i; best_direction = 1
                     if dist_v < min_dist: min_dist = dist_v; best_edge_idx = i; best_direction = -1
             
+            # --- B. 记录这一笔 ---
             if best_edge_idx != -1:
                 u, v, raw_path = unread_edges[best_edge_idx]
                 visited_indices.add(best_edge_idx)
@@ -56,6 +63,7 @@ class TrajectoryPlanner:
                 stroke_pixels = raw_path if raw_path else [self.graph.nodes[u]['pos'], self.graph.nodes[v]['pos']]
                 if best_direction == -1: stroke_pixels = stroke_pixels[::-1]
                 
+                # 尝试连笔
                 is_connected = False
                 if current_pos is not None and self.strokes:
                     last_stroke_end = self.strokes[-1][-1]
@@ -67,27 +75,102 @@ class TrajectoryPlanner:
                 if not is_connected: self.strokes.append(stroke_pixels)
                 current_pos = np.array(stroke_pixels[-1])
                 
+                # --- C. DFS 连续绘制 (核心修改：5点平均向量) ---
                 while True:
                     curr_node_id = v if best_direction == 1 else u
-                    found_next = False
+                    
+                    # 1. 找出所有连接当前路口的“候选边”
+                    candidates = []
                     for i in range(len(unread_edges)):
                         if i in visited_indices: continue
                         nu, nv, npath = unread_edges[i]
                         
-                        # 处理普通连接
-                        if nu == curr_node_id: 
-                            visited_indices.add(i)
-                            new = npath if npath else [self.graph.nodes[nu]['pos'], self.graph.nodes[nv]['pos']]
-                            self.strokes[-1].extend(new[1:]) 
-                            current_pos = np.array(new[-1])
-                            u, v = nu, nv; best_direction = 1; found_next = True; break
-                        elif nv == curr_node_id: 
-                            visited_indices.add(i)
-                            new = npath if npath else [self.graph.nodes[nu]['pos'], self.graph.nodes[nv]['pos']]
-                            self.strokes[-1].extend(new[::-1][1:]) 
-                            current_pos = np.array(new[::-1][-1])
-                            u, v = nu, nv; best_direction = -1; found_next = True; break
-                    if not found_next: break
+                        if nu == curr_node_id:
+                            # 方向: nu -> nv
+                            p_start = np.array(self.graph.nodes[nu]['pos'])
+                            
+                            # 【修改点 1】: 出向量计算 (Lookahead)
+                            # 尝试往前看 5 个点，如果不够长就看终点
+                            step = min(len(npath) - 1, LOOK_STEPS) if len(npath) > 1 else 0
+                            if step > 0:
+                                p_vec_end = np.array(npath[step])
+                            else:
+                                p_vec_end = np.array(self.graph.nodes[nv]['pos'])
+                                
+                            vec = p_vec_end - p_start
+                            candidates.append({'idx': i, 'vec': vec, 'dir': 1, 'path': npath, 'end_node': nv})
+                            
+                        elif nv == curr_node_id:
+                            # 方向: nv -> nu (逆向)
+                            p_start = np.array(self.graph.nodes[nv]['pos'])
+                            
+                            # 【修改点 2】: 逆向的出向量
+                            # 原始路径是 [0..N]，我们从 N 往回看
+                            # 取倒数第 (1+step) 个点
+                            step = min(len(npath) - 1, LOOK_STEPS) if len(npath) > 1 else 0
+                            if step > 0:
+                                p_vec_end = np.array(npath[-(1+step)]) 
+                            else:
+                                p_vec_end = np.array(self.graph.nodes[nu]['pos'])
+                                
+                            vec = p_vec_end - p_start
+                            candidates.append({'idx': i, 'vec': vec, 'dir': -1, 'path': npath, 'end_node': nu})
+                    
+                    if not candidates:
+                        break # 死胡同
+                    
+                    # 2. 计算最优解 (入向量 vs 出向量)
+                    best_candidate = None
+                    
+                    # 【修改点 3】: 入向量计算 (Lookback)
+                    # 使用当前笔画的最后 5 个点来确定惯性方向
+                    curr_stroke_len = len(self.strokes[-1])
+                    if curr_stroke_len >= 2:
+                        p_curr = np.array(self.strokes[-1][-1])
+                        
+                        # 往前回溯 step 个点
+                        step = min(curr_stroke_len - 1, LOOK_STEPS)
+                        p_prev = np.array(self.strokes[-1][-(1+step)])
+                        
+                        v_in = p_curr - p_prev # 入向量
+                        norm_in = np.linalg.norm(v_in)
+                        
+                        best_score = -2.0 
+                        
+                        for cand in candidates:
+                            v_out = cand['vec']
+                            norm_out = np.linalg.norm(v_out)
+                            
+                            if norm_in < 1e-6 or norm_out < 1e-6:
+                                score = -1.0
+                            else:
+                                # 计算夹角余弦值
+                                score = np.dot(v_in, v_out) / (norm_in * norm_out)
+                            
+                            if score > best_score:
+                                best_score = score
+                                best_candidate = cand
+                    else:
+                        best_candidate = candidates[0]
+                    
+                    # 3. 执行选择
+                    idx = best_candidate['idx']
+                    visited_indices.add(idx)
+                    
+                    npath = best_candidate['path']
+                    if best_candidate['dir'] == 1:
+                        new_pixels = npath if npath else [self.graph.nodes[curr_node_id]['pos'], self.graph.nodes[best_candidate['end_node']]['pos']]
+                        self.strokes[-1].extend(new_pixels[1:])
+                    else:
+                        new_pixels = npath if npath else [self.graph.nodes[best_candidate['end_node']]['pos'], self.graph.nodes[curr_node_id]['pos']]
+                        self.strokes[-1].extend(new_pixels[::-1][1:]) 
+                        
+                    current_pos = np.array(self.strokes[-1][-1])
+                    
+                    if best_candidate['dir'] == 1:
+                        u, v = curr_node_id, best_candidate['end_node']; best_direction = 1
+                    else:
+                        u, v = best_candidate['end_node'], curr_node_id; best_direction = -1
 
         print(f"[Plan] 路径规划完成，共 {len(self.strokes)} 条笔画")
 
@@ -114,6 +197,7 @@ class TrajectoryPlanner:
             norm1 = np.linalg.norm(v1)
             norm2 = np.linalg.norm(v2)
             
+            # 这里阈值可以稍微放宽，因为有些长直线可能被误判
             if norm1 > 20.0 or norm2 > 20.0:
                 sub_strokes.append(current_sub)
                 current_sub = [p_curr.tolist()] 
@@ -162,42 +246,114 @@ class TrajectoryPlanner:
                     final_strokes.append(seg)
         self.strokes = final_strokes
 
-    def export_json(self, output_path, canvas_width_mm=200):
-        print(f"[Export] 导出 JSON (宽: {canvas_width_mm}mm)...")
+    def _resample_path_physical(self, points_mm, step_mm=0.5):
+        """
+        【新增辅助函数】物理空间重采样
+        输入单位为 mm 的点集，输出按 step_mm 均匀分布的点集
+        """
+        if len(points_mm) < 2:
+            return points_mm
+            
+        pts = np.array(points_mm)
+        # 计算每段距离
+        dists = np.sqrt(np.sum(np.diff(pts, axis=0)**2, axis=1))
+        # 计算累积距离 [0, d1, d1+d2, ...]
+        cumulative_dist = np.insert(np.cumsum(dists), 0, 0)
+        total_length = cumulative_dist[-1]
+        
+        # 计算需要多少个点
+        if total_length <= step_mm:
+            return points_mm # 太短了，不重采样
+            
+        num_points = int(total_length / step_mm)
+        if num_points < 2: num_points = 2
+        
+        # 生成均匀的目标距离
+        target_dists = np.linspace(0, total_length, num_points)
+        
+        # 线性插值
+        new_x = np.interp(target_dists, cumulative_dist, pts[:, 0])
+        new_y = np.interp(target_dists, cumulative_dist, pts[:, 1])
+        
+        return list(zip(new_x, new_y))
+
+    def export_json(self, output_path, canvas_size_mm=(150, 150), physical_step_mm=1.0):
+        """
+        导出 JSON (物理空间均匀重采样模式)
+        1. 自适应撑满 (保持长宽比)
+        2. 不自动居中 (原点为包围盒左下角)
+        3. 【关键】在物理空间按 mm 重采样，确保点距恒定
+        """
+        target_w, target_h = canvas_size_mm
+        print(f"[Export] 导出 JSON (自适应撑满 + 物理重采样)...")
+        print(f"       目标画布: {target_w}mm x {target_h}mm")
+        print(f"       物理点间距: {physical_step_mm} mm (无论画布多大，点距恒定)")
+        
         all_points = [p for s in self.strokes for p in s]
         if not all_points: return
         all_points = np.array(all_points)
+        
+        # 1. 计算包围盒
         min_x, max_x = np.min(all_points[:,0]), np.max(all_points[:,0])
         min_y, max_y = np.min(all_points[:,1]), np.max(all_points[:,1])
-        pixel_width = max_x - min_x
-        if pixel_width == 0: pixel_width = 1
-        scale = canvas_width_mm / pixel_width
+        
+        content_w_px = max_x - min_x
+        content_h_px = max_y - min_y
+        
+        if content_w_px == 0: content_w_px = 1
+        if content_h_px == 0: content_h_px = 1
+        
+        # 2. 计算缩放比例 (自适应撑满，保持长宽比)
+        scale_x = target_w / content_w_px
+        scale_y = target_h / content_h_px
+        final_scale = min(scale_x, scale_y)
         
         json_data = {
-            "meta": {"total_strokes": len(self.strokes), "scale_factor": scale, "canvas_width_mm": canvas_width_mm},
+            "meta": {
+                "total_strokes": len(self.strokes), 
+                "scale_factor": final_scale, 
+                "canvas_width_mm": target_w,
+                "physical_step_mm": physical_step_mm,
+                "strategy": "uniform_physical_sampling_no_center"
+            },
             "trajectories": []
         }
+        
+        # 3. 转换 + 重采样
         for stroke in self.strokes:
-            traj = []
+            # --- 第一步：转成物理坐标 (mm) ---
+            raw_mm_traj = []
             for x, y in stroke:
-                world_x = (x - min_x) * scale
-                world_y = (max_y - y) * scale 
-                traj.append([round(world_x, 3), round(world_y, 3)])
-            json_data["trajectories"].append(traj)
+                # 坐标转换：
+                # X: 减去 min_x (左对齐) -> 缩放
+                # Y: max_y 减去 y (底部对齐, 翻转坐标系) -> 缩放
+                # 结果：(0,0) 是图案内容的左下角
+                world_x = (x - min_x) * final_scale
+                world_y = (max_y - y) * final_scale 
+                raw_mm_traj.append([world_x, world_y])
+            
+            # --- 第二步：在物理空间重采样 (核心修改) ---
+            # 这一步保证了无论 final_scale 是大是小，输出的点间距永远是 physical_step_mm
+            resampled_mm_traj = self._resample_path_physical(raw_mm_traj, step_mm=physical_step_mm)
+            
+            # --- 第三步：保留 3 位小数并存入 ---
+            final_traj = [[round(p[0], 3), round(p[1], 3)] for p in resampled_mm_traj]
+            
+            if final_traj:
+                json_data["trajectories"].append(final_traj)
             
         with open(output_path, 'w') as f:
             json.dump(json_data, f, indent=2)
         print(f"✅ JSON 已保存至: {output_path}")
+        print(f"   (缩放比例: {final_scale:.4f}, 物理点距: {physical_step_mm}mm)")
 
     def visualize_order(self, save_path=None):
-        """ 
-        可视化：使用高对比度颜色区分笔画，并显示空走轨迹
-        """
         plt.figure(figsize=(12, 12))
-        plt.title(f"Robot Path | Solid: Draw | Dashed: Air Move | Strokes: {len(self.strokes)}")
+        plt.title(f"Final Path | Strokes: {len(self.strokes)}")
         plt.axis('equal')
-        
-        # 高对比度颜色池 (循环使用)
+        import matplotlib.cm as cm
+        cmap = cm.get_cmap('jet')
+        # 撞色
         colors = ['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', 
                   '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe', 
                   '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000', 
@@ -207,51 +363,41 @@ class TrajectoryPlanner:
             pts = np.array(stroke)
             if len(pts) == 0: continue
             
-            # 1. 选颜色
             c = colors[i % len(colors)]
+            plt.plot(pts[:, 0], pts[:, 1], color=c, linewidth=2)
+            plt.scatter(pts[0,0], pts[0,1], color=c, s=15, zorder=5)
             
-            # 2. 画实线 (机械臂在纸上画)
-            plt.plot(pts[:, 0], pts[:, 1], color=c, linewidth=2, label=f"Stroke {i}")
-            
-            # 3. 标起点 (圆点)
-            plt.scatter(pts[0,0], pts[0,1], color=c, s=25, zorder=5)
-            
-            # 4. 画空走轨迹 (灰色虚线) - 模拟机械臂抬笔移动
             if i > 0:
-                prev_stroke = self.strokes[i-1]
-                if len(prev_stroke) > 0:
-                    prev_end = prev_stroke[-1]
-                    curr_start = pts[0]
-                    # 画一条灰色的虚线连接上一笔终点和这一笔起点
-                    plt.plot([prev_end[0], curr_start[0]], [prev_end[1], curr_start[1]], 
-                             color='gray', linestyle='--', linewidth=0.5, alpha=0.5)
+                prev = self.strokes[i-1]
+                if len(prev) > 0:
+                    plt.plot([prev[-1][0], pts[0][0]], [prev[-1][1], pts[0][1]], 
+                             color='gray', linestyle='--', linewidth=0.5, alpha=0.3)
 
         plt.gca().invert_yaxis()
         plt.axis('off')
-        
         if save_path:
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            print(f"✅ 路径预览图已保存至: {save_path}")
+            print(f"✅ 预览图已保存: {save_path}")
         plt.show()
 
 if __name__ == "__main__":
     current_dir = os.path.dirname(os.path.abspath(__file__))
     img_dir = os.path.join(current_dir, "img")
     GRAPH_FILE = os.path.join(img_dir, "graph_data.pkl")
-    JSON_FILE = os.path.join(img_dir, "robot_paths.json")
-    OUTPUT_VIS_FILE = os.path.join(img_dir, "step04_path_preview.png")
+    JSON_FILE = os.path.join(img_dir, "step04_robot_paths.json")
+    OUTPUT_VIS_FILE = os.path.join(img_dir, "step04_path.png")
     
     try:
         planner = TrajectoryPlanner(GRAPH_FILE)
         
-        # 1. 规划
+        # 1. 规划 (Lookahead-5 惯性导向)
         planner.generate_trajectories()
         
         # 2. 智能平滑
         planner.smooth_and_resample(smoothing=5.0, step_size=2.0)
         
         # 3. 导出
-        planner.export_json(JSON_FILE, canvas_width_mm=150)
+        planner.export_json(JSON_FILE, canvas_size_mm=(150, 150), physical_step_mm=1.0)
         
         # 4. 可视化
         planner.visualize_order(save_path=OUTPUT_VIS_FILE)
