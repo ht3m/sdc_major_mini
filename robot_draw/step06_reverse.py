@@ -6,12 +6,12 @@ from scipy.optimize import minimize
 class JakaRobotIK:
     def __init__(self):
         self.DH_PARAMS = [
-            [0,        0,      0,      0],          # J1
-            [np.pi/2,  0,      187.0,  0],          # J2
+            [0,        0,      187.0,      0],          # J1
+            [np.pi/2,  0,      6,  0],          # J2
             [0,        210.0,  0,      0],          # J3
-            [-np.pi/2, 210.5,  6.0,    0],          # J4 
+            [-np.pi/2, 0,  210.5,    0],          # J4 
             [np.pi/2,  0,      0,      0],          # J5
-            [np.pi/2,  159.3,  0,      0]           # J6
+            [-np.pi/2,  0,  159.3,      0]           # J6
         ]
         
         # --- 【新增】关节物理限位 (对应 Rust 代码) ---
