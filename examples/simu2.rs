@@ -35,7 +35,7 @@ fn main() -> anyhow::Result<()> {
         .add_search_path("./asserts")?
         .set_gravity([0., 0., -9.8])?
         // 物理步长设为 240Hz，这是 PyBullet 的标准频率
-        .set_step_time(Duration::from_secs_f64(1. / 240.))?;
+        .set_step_time(Duration::from_secs_f64(1. / 125.))?;
     renderer.add_search_path("./asserts")?;
 
     let mut robot_1 = physics_engine
@@ -55,7 +55,7 @@ fn main() -> anyhow::Result<()> {
     // 2. 读取 JSON 轨迹文件
     // =============================================================
     // 请确保路径正确，这里指向 step07 生成的文件
-    let json_path = Path::new("./robot_draw/img/step07_joint_trajectory.json");
+    let json_path = Path::new("./robot_draw/img/step07_more_optimized_trajectory.json");
     println!("正在加载轨迹文件: {:?}", json_path);
 
     let file = File::open(json_path).context("无法打开 JSON 文件，请检查路径")?;

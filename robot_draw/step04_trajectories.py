@@ -397,7 +397,7 @@ if __name__ == "__main__":
         planner.smooth_and_resample(smoothing=5.0, step_size=2.0)
         
         # 3. 导出
-        planner.export_json(JSON_FILE, canvas_size_mm=(250, 250), physical_step_mm=1.0)
+        planner.export_json(JSON_FILE, canvas_size_mm=(200, 200), physical_step_mm=0.5)
         
         # 4. 可视化
         planner.visualize_order(save_path=OUTPUT_VIS_FILE)
