@@ -4,7 +4,7 @@ use robot_behavior::{MotionType, Pose, behavior::*};
 use rsbullet::RsBulletRobot;
 
 fn main() -> anyhow::Result<()> {
-    let mut robot: RsBulletRobot<JakaMini2> = JakaMini2::new("10.5.5.100");
+    let mut robot: RsBulletRobot<JakaRobot<JakaMini2, 6>> = JakaMini2::new("10.5.5.100");
 
     robot.move_joint(&[0.; 6])?;
     robot.move_to(MotionType::Joint([0.; 6]))?;
