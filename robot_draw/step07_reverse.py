@@ -108,7 +108,7 @@ def get_vertical_quat(pitch_deg=90):
 def save_json_indented(filename, data):
     with open(filename, 'w', encoding='utf-8') as f:
         # 使用 indent=None 减小体积，但结构依然是分层的
-        json.dump(data, f, indent=None, separators=(',', ':'))
+        json.dump(data, f, indent=2, separators=(',', ':'))
     print(f"📁 数据已保存: {filename}")
 
 # ==================================================================================
