@@ -2,7 +2,6 @@ use std::{fs::File, io::BufReader, path::Path, time::Duration};
 
 use anyhow::Context;
 use libjaka::JakaMini2;
-// 🔥 核心：引入所有必要的 Trait
 use robot_behavior::{
     ArmPreplannedMotion, // <--- 包含 move_joint_async
     Robot,               // <--- 包含 is_moving
@@ -31,7 +30,7 @@ fn main() -> anyhow::Result<()> {
     physics
         .add_search_path("./asserts")?
         .set_gravity([0., 0., -9.8])?
-        // 🔥 关键：设置物理步长为 125Hz (8ms)，与 Python 生成的数据严格对齐
+        // 🔥 关键：设置物理步长为 125Hz (8ms)
         .set_step_time(Duration::from_secs_f64(1. / 125.))?;
     renderer.add_search_path("./asserts")?;
 
@@ -51,7 +50,6 @@ fn main() -> anyhow::Result<()> {
     // =============================================================
     // 2. 加载轨迹文件
     // =============================================================
-    // 确保这个路径是 Step 07 生成的那个文件
     let json_path = Path::new("./robot_draw/img/step08_optimized_trajectory.json");
     println!("📂 加载轨迹: {:?}", json_path);
 
@@ -73,8 +71,6 @@ fn main() -> anyhow::Result<()> {
     let start_arr: [f64; 6] = start_vec.as_slice().try_into().unwrap();
 
     println!("🚀 移动到起始姿态...");
-    // 这是一个阻塞调用，但在 RsBullet 中通常只是一次瞬移或快速移动
-    // 我们手动 step 让它稳定下来
     robot.move_joint_async(&start_arr)?;
 
     // 预热 1 秒 (125 * 8ms)
