@@ -10,3 +10,6 @@
   - pip install numpy matplotlib scipy networkx opencv-contrib-python -i https://pypi.tuna.tsinghua.edu.cn/simple
 - 图片放到robot_draw/img/test.jpg
 - 运行pipeline
+
+
+rerun robot_draw\img\rerun_data.rrd
