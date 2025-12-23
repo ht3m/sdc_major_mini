@@ -1,6 +1,6 @@
 use anyhow::Result;
 use libjaka::JakaMini2;
-use robot_behavior::Robot; // 引入 Trait
+use robot_behavior::behavior::*; // 引入 Trait
 use roplat_rerun::RerunHost;
 use rsbullet::RsBullet;
 use std::time::Duration;
@@ -53,14 +53,6 @@ fn main() -> Result<()> {
     // =============================================================
     // move_traj_from_file 只是把任务放进了队列，它自己不包含循环。
     // 我们必须在这里推着物理引擎走。
-
-    while robot.is_moving() {
-        // 每次 step，机器人底层闭包就会取出文件中解析的下一个点并执行
-        physics.step()?;
-
-        // 可以在这里加一点点 sleep 方便观察，例如 5ms
-        // std::thread::sleep(Duration::from_millis(5));
-    }
 
     println!("✨ 轨迹执行完毕");
 
