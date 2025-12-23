@@ -15,6 +15,7 @@ fn main() -> anyhow::Result<()> {
     // 使用 `xx.json` 文件中的轨迹进行运动
     // 文件内要求轨迹形式为：
     // [
+    //   {"Joint": [0.0,0.0,0.0,0.0,0.0,0.0]}
     //   { "Cartesian": {"Euler": [[0.0, 0.0, 0.5], [0.0, 0.0, 0.0]] }},
     // ]
     robot.move_traj_from_file("xx.json")?;

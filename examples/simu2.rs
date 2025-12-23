@@ -1,123 +1,139 @@
-use std::{fs::File, io::BufReader, path::Path, time::Duration};
-
-use anyhow::Context;
-use libjaka::JakaMini2;
-use nalgebra as na;
-use robot_behavior::{Pose, behavior::*};
-use roplat_rerun::RerunHost;
-use rsbullet::RsBullet;
+use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::convert::TryInto;
+use std::{
+    fs::File,
+    io::BufReader,
+    path::Path,
+    thread,
+    time::{Duration, Instant},
+};
 
-// 定义与 step07_joint_trajectory.json 匹配的数据结构
-#[derive(Deserialize, Debug)]
-struct TrajectoryMeta {
-    source: String,
-    unit: String,
-    count: usize,
+// 假设这是你的真机驱动库
+// use libjaka::JakaMini2;
+
+// 为了代码能跑，我这里模拟一个 JakaMini2 的接口结构
+// 你实际使用时，请替换回 use libjaka::JakaMini2;
+struct JakaMini2;
+impl JakaMini2 {
+    pub fn new(_ip: &str) -> Result<Self> {
+        Ok(Self)
+    }
+
+    // 基础 PTP 运动 (移动到起点用)
+    pub fn move_joint(&self, _joints: &[f64; 6]) -> Result<()> {
+        // 实际 SDK: robot.move_joint(...)
+        println!("🤖 正在移动到初始位置...");
+        thread::sleep(Duration::from_secs(2)); // 模拟耗时
+        Ok(())
+    }
+
+    // 开启伺服模式 (必须)
+    pub fn servo_enable(&self) -> Result<()> {
+        println!("⚡ 开启 Servo 模式");
+        Ok(())
+    }
+
+    // 关闭伺服模式 (必须)
+    pub fn servo_disable(&self) -> Result<()> {
+        println!("💤 关闭 Servo 模式");
+        Ok(())
+    }
+
+    // 核心：单帧伺服指令
+    // 注意：这里不是 move_joint (PTP)，而是 servo_j
+    pub fn servo_j(&self, _joints: &[f64; 6]) -> Result<()> {
+        // 实际 SDK: robot.servo_j(...)
+        Ok(())
+    }
 }
 
+// 定义数据结构
 #[derive(Deserialize, Debug)]
 struct TrajectoryData {
-    #[allow(dead_code)] // 仿真中可能用不到 meta，忽略未使用的警告
-    meta: TrajectoryMeta,
+    #[allow(dead_code)]
+    meta: serde::de::IgnoredAny,
     joints: Vec<Vec<f64>>,
 }
 
-fn main() -> anyhow::Result<()> {
+fn main() -> Result<()> {
     // =============================================================
-    // 1. 初始化仿真环境 (Initialize)
+    // 1. 连接真机
     // =============================================================
-    let mut renderer = RerunHost::new("jaka_dual")?;
-    let mut physics_engine = RsBullet::new(rsbullet::Mode::Gui)?;
-
-    physics_engine
-        .add_search_path("./asserts")?
-        .set_gravity([0., 0., -9.8])?
-        // 物理步长设为 240Hz，这是 PyBullet 的标准频率
-        .set_step_time(Duration::from_secs_f64(1. / 125.))?;
-    renderer.add_search_path("./asserts")?;
-
-    let mut robot_1 = physics_engine
-        .robot_builder::<JakaMini2>("robot_1")
-        .base([0.0, 0.0, 0.0])
-        .base_fixed(true)
-        .load()?;
-
-    let robot_1_renderer = renderer
-        .robot_builder::<JakaMini2>("robot_1")
-        .base([0.0, 0.0, 0.0])
-        .base_fixed(true)
-        .load()?;
-    robot_1_renderer.attach_from(&mut robot_1)?;
+    // 替换为真实 IP
+    let robot = JakaMini2::new("192.168.1.100")?;
+    println!("✅ 机器人连接成功");
 
     // =============================================================
-    // 2. 读取 JSON 轨迹文件
+    // 2. 加载轨迹文件
     // =============================================================
-    // 请确保路径正确，这里指向 step07 生成的文件
-    let json_path = Path::new("./robot_draw/img/step07_more_optimized_trajectory.json");
-    println!("正在加载轨迹文件: {:?}", json_path);
-
-    let file = File::open(json_path).context("无法打开 JSON 文件，请检查路径")?;
+    let json_path = Path::new("./robot_draw/img/step08_optimized_trajectory.json");
+    let file = File::open(json_path).context("找不到 JSON 文件")?;
     let reader = BufReader::new(file);
     let trajectory: TrajectoryData = serde_json::from_reader(reader)?;
 
     let points = trajectory.joints;
     if points.is_empty() {
-        println!("警告: 轨迹数据为空");
         return Ok(());
     }
-    println!("轨迹加载成功，共 {} 个点", points.len());
+
+    println!("📂 轨迹加载完成: {} 帧", points.len());
 
     // =============================================================
-    // 3. 移动到起点并等待 (Move to Start & Wait)
+    // 3. 安全复位 (Move to Start)
     // =============================================================
-    let start_joint = &points[0];
+    // 在开启伺服模式前，机器人必须实际上已经位于轨迹的第一个点
+    // 否则伺服开启瞬间，机器人会因为误差过大而急停或猛冲
+    let start_vec = &points[0];
+    let start_arr: [f64; 6] = start_vec.as_slice().try_into().unwrap();
 
-    // 【修改点 1】：将 Vec 转换为 [f64; 6]
-    // try_into() 尝试转换，如果长度不对会报错
-    let start_array: [f64; 6] = start_joint
-        .as_slice()
-        .try_into()
-        .context("起始点关节数据长度必须为6")?;
-
-    println!("移动到起始姿态...");
-    // 传入数组的引用
-    robot_1.move_joint(&start_array)?;
-
-    for _ in 0..480 {
-        physics_engine.step()?;
-    }
-    println!("起始姿态已稳定，开始执行轨迹...");
+    println!("🚀 [PTP] 慢速移动到轨迹起点...");
+    robot.move_joint(&start_arr)?;
+    println!("✅ 已到达起点，准备开始轨迹流...");
 
     // =============================================================
-    // 4. 执行整个轨迹 (Run Trajectory)
+    // 4. 执行 Move Traj (流式控制)
     // =============================================================
-    for (i, joint_target) in points.iter().enumerate().skip(1) {
-        // 【修改点 2】：同样进行类型转换
-        // 这里使用 unwrap() 或者 expect()，因为我们在 step07 保证了数据生成是对的
-        // 如果这里报错，说明 JSON 数据坏了
-        let target_array: [f64; 6] = joint_target
-            .as_slice()
-            .try_into()
-            .expect("轨迹点关节数据长度错误");
+    move_traj(&robot, &points)?;
 
-        // 传入数组的引用
-        robot_1.move_joint(&target_array)?;
+    println!("✨ 绘制完成！");
+    Ok(())
+}
 
-        physics_engine.step()?;
+/// 核心函数：以严格的 125Hz 发送数据
+fn move_traj(robot: &JakaMini2, points: &[Vec<f64>]) -> Result<()> {
+    // 1. 开启伺服模式
+    robot.servo_enable()?;
 
-        if i % 100 == 0 {
-            // println!("执行进度: {}/{}", i, points.len());
+    // 定义周期 8ms
+    let period = Duration::from_secs_f64(1.0 / 125.0);
+
+    // 2. 实时循环
+    for (i, point_vec) in points.iter().enumerate() {
+        // --- 计时开始 ---
+        let start = Instant::now();
+
+        let target: [f64; 6] = point_vec.as_slice().try_into().expect("数据异常");
+
+        // --- 发送指令 (非阻塞) ---
+        // 这里调用的必须是 servo_j，它只是把数据塞给底层控制卡，瞬间完成
+        robot.servo_j(&target)?;
+
+        // --- 智能休眠 (Smart Sleep) ---
+        // 计算发送指令消耗了多少时间
+        let elapsed = start.elapsed();
+
+        if elapsed < period {
+            // 如果耗时小于 8ms，就睡够剩下的时间
+            thread::sleep(period - elapsed);
+        } else {
+            // 如果耗时超过 8ms，说明系统延迟高，不能睡了，直接发下一帧
+            // 可以在这里加个计数器，如果连续超时太多帧就报错
+            // eprintln!("⚠️ 警告: 第 {} 帧超时 (耗时 {:?})", i, elapsed);
         }
     }
 
-    println!("轨迹执行完毕！保持仿真窗口开启。");
-
-    // =============================================================
-    // 5. 保持窗口常驻
-    // =============================================================
-    loop {
-        physics_engine.step()?;
-    }
+    // 3. 结束，关闭伺服模式
+    robot.servo_disable()?;
+    Ok(())
 }

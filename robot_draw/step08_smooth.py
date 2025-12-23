@@ -9,53 +9,39 @@ class JointTrajectoryOptimizer:
         self.dt = 1.0 / frequency  # 8ms
         
         # === 速度配置 (关节角速度 rad/s) ===
-        # 注意：这里不是 mm/s，而是关节转动的快慢
-        # Draw: 慢速 (保证精度)
         self.SPEED_SCALE_DRAW = 0.15 
-        # Air: 快速 (提高效率)
         self.SPEED_SCALE_AIR  = 0.40 
         
         # === 停顿配置 (秒) ===
         self.WAIT_START = 1.0
-        self.WAIT_CONN  = 1.0  # 动作连接处停顿 1 秒
+        self.WAIT_CONN  = 1.0 
 
     def _get_cumulative_dist(self, joints):
-        """计算关节空间的累积路程 (L1范数或L2范数均可)"""
         diffs = np.abs(np.diff(joints, axis=0))
-        # 找出变动最大的那个关节作为基准
         dists = np.max(diffs, axis=1) 
         return np.concatenate(([0], np.cumsum(dists)))
 
     def resample_segment(self, joints, speed_rad_s, kind='cubic'):
-        """对一段关节轨迹进行重采样"""
         joints = np.array(joints)
         if len(joints) < 2: return [joints[0]]
 
-        # 1. 计算总行程 (弧度)
         cum_dist = self._get_cumulative_dist(joints)
         total_dist = cum_dist[-1]
         
         if total_dist < 1e-4: return [joints[0]]
 
-        # 2. 计算耗时
         total_time = total_dist / speed_rad_s
-        # 至少给 2 帧
         if total_time < self.dt * 2: total_time = self.dt * 2
 
-        # 3. 生成时间轴
         num_frames = int(np.ceil(total_time / self.dt))
         t_target = np.linspace(0, total_dist, num_frames)
         
-        # 4. 插值
-        # 只有点数够多才能用 cubic
         actual_kind = 'cubic' if (kind == 'cubic' and len(joints) >= 4) else 'linear'
         
         try:
-            # axis=0 对每一列(每个关节)分别插值
             interpolator = interp1d(cum_dist, joints, axis=0, kind=actual_kind)
             dense_joints = interpolator(t_target)
         except:
-            # 降级
             interpolator = interp1d(cum_dist, joints, axis=0, kind='linear')
             dense_joints = interpolator(t_target)
             
@@ -74,7 +60,12 @@ if __name__ == "__main__":
     img_dir = os.path.join(current_dir, "img")
     
     INPUT_FILE = os.path.join(img_dir, "step07_joint_trajectory.json")
-    OUTPUT_FILE = os.path.join(img_dir, "step08_optimized_trajectory.json")
+    
+    # === 输出文件定义 ===
+    # 1. 包含元数据的完整文件 (供 Python/Debug 查看)
+    OUTPUT_FILE_FULL = os.path.join(img_dir, "step08_optimized_trajectory.json")
+    # 2. ⚠️ 专门给 Rust move_traj_from_file 用的文件
+    OUTPUT_FILE_RUST = os.path.join(img_dir, "step08_optimized_trajectory_rust.json")
     
     if not os.path.exists(INPUT_FILE):
         print(f"❌ 找不到文件: {INPUT_FILE}")
@@ -90,7 +81,7 @@ if __name__ == "__main__":
     
     final_traj = []
     
-    # 1. 初始停顿 (获取第一个点)
+    # 1. 初始停顿
     if structured_joints:
         start_pose = structured_joints[0][0][0]
         start_wait_frames = int(optimizer.WAIT_START / optimizer.dt)
@@ -100,36 +91,33 @@ if __name__ == "__main__":
     total_strokes = len(structured_joints)
     for s_idx, segments in enumerate(structured_joints):
         print(f"\r处理笔画: {s_idx+1}/{total_strokes}", end="")
-        
-        # segments: 0=Move, 1=Drop, 2=Draw, 3=Lift
         for seg_idx, points in enumerate(segments):
-            
-            # --- 策略选择 ---
             if seg_idx == 2: # Draw
                 speed = optimizer.SPEED_SCALE_DRAW
-                kind = 'cubic'  # 笔画要平滑
+                kind = 'cubic'
             else: # Air Move
                 speed = optimizer.SPEED_SCALE_AIR
-                kind = 'linear' # 空移走直线即可，防抖
+                kind = 'linear'
             
-            # --- 重采样 ---
             dense_segment = optimizer.resample_segment(points, speed, kind)
             final_traj.extend(dense_segment)
             
-            # --- 插入停顿 ---
-            # 获取这段的最后一个姿态
             last_pose = dense_segment[-1]
             wait_frames = int(optimizer.WAIT_CONN / optimizer.dt)
             final_traj.extend([last_pose] * wait_frames)
 
     print(f"\n✅ 优化完成! 总帧数: {len(final_traj)}")
     
-    # 3. 后处理平滑 (消除 IK 带来的微小锯齿)
+    # 3. 后处理平滑
     final_traj_np = np.array(final_traj)
     final_traj_smoothed = apply_smoothing(final_traj_np)
     
-    # 4. 保存
-    output_data = {
+    # ==========================================================
+    # 4. 保存文件 (重点修改部分)
+    # ==========================================================
+    
+    # (A) 保存标准格式 (带 Meta 信息)
+    output_data_full = {
         "meta": {
             "source": "step08_trajectory_optimization",
             "unit": "radians",
@@ -140,8 +128,17 @@ if __name__ == "__main__":
         },
         "joints": final_traj_smoothed
     }
+    with open(OUTPUT_FILE_FULL, 'w') as f:
+        json.dump(output_data_full, f, indent=None)
+    print(f"💾 通用格式已保存: {OUTPUT_FILE_FULL}")
+
+    # (B) 🔥 保存 Rust Enum 专用格式 🔥
+    # 格式要求: [{"Joint": [0.1, ...]}, {"Joint": [0.2, ...]}, ...]
+    # 只有这种格式才能被 move_traj_from_file 直接读取
+    rust_data = [{"Joint": frame} for frame in final_traj_smoothed]
     
-    with open(OUTPUT_FILE, 'w') as f:
-        json.dump(output_data, f, indent=None)
-    
-    print(f"💾 文件已保存: {OUTPUT_FILE}")
+    with open(OUTPUT_FILE_RUST, 'w') as f:
+        json.dump(rust_data, f, indent=None)
+        
+    print(f"🦀 Rust专用格式已保存: {OUTPUT_FILE_RUST}")
+    print(f"   (请在 Rust 中加载此文件)")
