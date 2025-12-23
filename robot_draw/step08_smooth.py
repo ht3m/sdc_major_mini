@@ -9,8 +9,8 @@ class JointTrajectoryOptimizer:
         self.dt = 1.0 / frequency  # 8ms
         
         # === 速度配置 (关节角速度 rad/s) ===
-        self.SPEED_SCALE_DRAW = 0.15 
-        self.SPEED_SCALE_AIR  = 0.40 
+        self.SPEED_SCALE_DRAW = 0.40
+        self.SPEED_SCALE_AIR  = 0.60
         
         # === 停顿配置 (秒) ===
         self.WAIT_START = 1.0
