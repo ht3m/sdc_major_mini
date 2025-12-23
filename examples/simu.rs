@@ -56,7 +56,5 @@ fn main() -> Result<()> {
 
     println!("✨ 轨迹执行完毕");
 
-    loop {
-        physics.step()?;
-    }
+    loop {}
 }
