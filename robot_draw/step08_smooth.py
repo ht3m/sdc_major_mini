@@ -129,7 +129,7 @@ if __name__ == "__main__":
         "joints": final_traj_smoothed
     }
     with open(OUTPUT_FILE_FULL, 'w') as f:
-        json.dump(output_data_full, f, indent=None)
+        json.dump(output_data_full, f, indent=2)
     print(f"💾 通用格式已保存: {OUTPUT_FILE_FULL}")
 
     # (B) 🔥 保存 Rust Enum 专用格式 🔥
@@ -138,7 +138,7 @@ if __name__ == "__main__":
     rust_data = [{"Joint": frame} for frame in final_traj_smoothed]
     
     with open(OUTPUT_FILE_RUST, 'w') as f:
-        json.dump(rust_data, f, indent=None)
+        json.dump(rust_data, f, indent=2)
         
     print(f"🦀 Rust专用格式已保存: {OUTPUT_FILE_RUST}")
     print(f"   (请在 Rust 中加载此文件)")
