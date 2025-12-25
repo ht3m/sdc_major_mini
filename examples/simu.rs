@@ -1,8 +1,10 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use libjaka::JakaMini2;
-use robot_behavior::behavior::*;
+use robot_behavior::{MotionType, Robot, behavior::*};
 use roplat_rerun::RerunHost;
 use rsbullet::RsBullet;
+use std::fs::File;
+use std::io::BufReader;
 use std::time::Duration;
 
 fn main() -> Result<()> {
@@ -34,9 +36,28 @@ fn main() -> Result<()> {
 
     let file_path = "./robot_draw/img/step08_optimized_trajectory_rust.json";
 
+    let file = File::open(file_path).context("无法打开轨迹文件")?;
+    let reader = BufReader::new(file);
+    let trajectory: Vec<MotionType<6>> = serde_json::from_reader(reader)?;
+    if trajectory.is_empty() {
+        println!("⚠️ 轨迹为空，程序退出");
+        return Ok(());
+    }
+
+    if let Some(MotionType::Joint(start_pose)) = trajectory.first() {
+        println!("📍 瞬移到起始姿态...");
+        robot.move_joint(start_pose)?;
+    }
+
+    for _ in 0..125 {
+        physics.step()?;
+    }
+
     robot.move_traj_from_file(file_path)?;
 
     println!("🚀 开始仿真循环...");
 
-    loop {}
+    loop {
+        physics.step()?;
+    }
 }
