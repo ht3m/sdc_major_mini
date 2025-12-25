@@ -4,15 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-<<<<<<< HEAD
-robot_behavior = "0.5.1"
-libjaka = "0.1.11"
-rsbullet = "0.3.4"
-=======
 robot_behavior = "0.5.2"
 libjaka = "0.1.12"
 rsbullet = "0.3.6"
->>>>>>> be74a3515edccc329e6396c28b81029e68e5edc5
 roplat_rerun = "0.1.1"
 anyhow = "1.0.100"
 nalgebra = "0.34.1"

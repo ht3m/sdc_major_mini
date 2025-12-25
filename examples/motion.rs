@@ -1,6 +1,6 @@
 use libjaka::JakaMini2;
 use nalgebra as na;
-use robot_behavior::{MotionType, Pose, behavior::*};
+use robot_behavior::{Pose, behavior::*};
 use rsbullet::RsBulletRobot;
 
 fn main() -> anyhow::Result<()> {

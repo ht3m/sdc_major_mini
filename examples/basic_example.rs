@@ -1,5 +1,5 @@
 use libjaka::JakaMini2;
-use robot_behavior::{MotionType, behavior::*};
+use robot_behavior::behavior::*;
 use std::f64::consts::FRAC_PI_6;
 
 fn main() -> anyhow::Result<()> {
@@ -25,31 +25,32 @@ fn main() -> anyhow::Result<()> {
 /// 但是只有在 #[cfg(test)] 下才会被编译。
 #[cfg(test)]
 mod tests {
+    use robot_behavior::behavior::*;
     #[test]
     fn power_on() -> anyhow::Result<()> {
         let mut robot = super::JakaMini2::new("10.5.5.100");
-        robot._power_on()?;
+        robot.init()?;
         Ok(())
     }
 
     #[test]
     fn power_off() -> anyhow::Result<()> {
         let mut robot = super::JakaMini2::new("10.5.5.100");
-        robot._power_off()?;
+        robot.shutdown()?;
         Ok(())
     }
 
     #[test]
     fn enable() -> anyhow::Result<()> {
         let mut robot = super::JakaMini2::new("10.5.5.100");
-        robot._enable()?;
+        robot.enable()?;
         Ok(())
     }
 
     #[test]
     fn disable() -> anyhow::Result<()> {
         let mut robot = super::JakaMini2::new("10.5.5.100");
-        robot._disable()?;
+        robot.disable()?;
         Ok(())
     }
 }
