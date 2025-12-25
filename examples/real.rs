@@ -16,8 +16,6 @@ fn main() -> Result<()> {
         0.4364556645834642,
     ])?;
 
-    sleep(Duration::from_secs(3));
-
     robot.move_traj_from_file("robot_draw\\img\\step08_optimized_trajectory_rust.json")?;
 
     sleep(Duration::from_secs(100));
@@ -30,6 +28,7 @@ mod test {
     use libjaka::JakaMini2;
     use robot_behavior::behavior::*;
 
+    #[test]
     fn init() {
         let mut robot = JakaMini2::new("10.5.5.100");
         robot.init();
