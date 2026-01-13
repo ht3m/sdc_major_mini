@@ -458,7 +458,7 @@ if __name__ == "__main__":
         builder.merge_close_nodes(distance_threshold=5.0) 
         
         # 3. 兜底扫描 (挽救合并或追踪中遗失的路径)
-        builder.salvage_missing_segments(min_length=20)
+        builder.salvage_missing_segments(min_length=10)
 
         # 4. 美容 (修剪毛刺 & 去噪) ---
         builder.prune_spurs(min_length=5) # 小于20像素的短枝剪掉

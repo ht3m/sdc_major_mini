@@ -26,8 +26,6 @@ class StructuredPathGenerator:
         num_points = int(np.ceil(dist / step_size))
         
         # 生成 t 序列
-        # 注意：包含终点。通常线性插值不包含起点以避免重复，
-        # 但既然您允许点重合，为了保证每段轨迹的完整性，我们生成完整的段。
         t_values = np.linspace(0, 1, num_points + 1)
         
         interpolated_points = []
@@ -57,26 +55,42 @@ class StructuredPathGenerator:
             print("❌ 错误：输入文件中没有轨迹数据")
             return
 
-        # 获取图纸原点，如果没有则默认为第一笔的起点位置(Air Z)
-        origin_info = meta.get("paper_origin_robot_frame", None)
+        # ==========================================
+        # 🔥 修改点：应用 180 度旋转 (x=-x, y=-y)
+        # ==========================================
+        print("🔄 正在应用坐标变换: 旋转 180° (x -> -x, y -> -y)...")
+        rotated_strokes = []
+        for stroke in raw_strokes:
+            # 对每一笔画中的每一个点 (x, y) 取反
+            new_stroke = [[-pt[0], -pt[1]] for pt in stroke]
+            rotated_strokes.append(new_stroke)
         
-        # 初始化“当前机械臂在空中的位置”
+        # 用旋转后的数据替换原始数据
+        raw_strokes = rotated_strokes
+
+        # 同时也要处理 Meta 中的原点信息（如果有的话），保持逻辑一致
+        origin_info = meta.get("paper_origin_robot_frame", None)
         if origin_info:
+            origin_info['x'] = -origin_info['x']
+            origin_info['y'] = -origin_info['y']
             current_air_pos = np.array([origin_info['x'], origin_info['y'], air_z])
-            print(f"✅ 起点设置为图纸原点: {current_air_pos}")
+            print(f"✅ (已旋转) 起点设置为图纸原点: {current_air_pos}")
         else:
+            # 如果没有原点信息，取旋转后的第一笔起点
             first_pt = raw_strokes[0][0]
             current_air_pos = np.array([first_pt[0], first_pt[1], air_z])
             print(f"⚠️ 未找到原点信息，起点设置为第一笔上方: {current_air_pos}")
+
+        # ==========================================
+        # 后续逻辑保持不变
+        # ==========================================
 
         # 结果容器：[Stroke1[Move, Drop, Draw, Lift], Stroke2[...], ...]
         structured_strokes = [] 
 
         total_points_count = 0
 
-        # ==========================================
         # 循环处理每一笔，生成标准的 4 段式结构
-        # ==========================================
         for i, stroke in enumerate(raw_strokes):
             stroke_segments = [] # 存放当前笔画的 4 个阶段
             
@@ -105,7 +119,6 @@ class StructuredPathGenerator:
 
             # --- 阶段 3: Draw (The actual stroke) ---
             # 这一步比较特殊，因为 stroke 本身已经是点集了
-            # 但我们需要确保 Z 轴正确，并且如果点太稀疏也需要插值（这里假设Step05已重采样，只修正Z）
             current_draw_points = []
             for pt in stroke:
                 current_draw_points.append([pt[0], pt[1], draw_z])
@@ -129,6 +142,7 @@ class StructuredPathGenerator:
         output_data = {
             "meta": {
                 "source": "step06_structured_path",
+                "rotation": "180_degrees_xy_plane", # 记录一下旋转操作
                 "structure_format": "[N_strokes, 4_segments, M_points, 3_coords]",
                 "segment_meaning": ["0:AirMove", "1:Drop", "2:Draw", "3:Lift"],
                 "total_strokes": len(structured_strokes),
@@ -178,10 +192,11 @@ class StructuredPathGenerator:
         ax.set_xlabel('X')
         ax.set_ylabel('Y')
         ax.set_zlabel('Z')
+        # 自动调整视角范围
         ax.set_zlim(draw_z - 10, air_z + 20)
         ax.view_init(elev=20, azim=-45)
         
-        plt.title(f"Structured 4-Stage Path")
+        plt.title(f"Structured 4-Stage Path (Rotated 180°)")
         plt.legend()
         plt.show()
 
@@ -201,6 +216,6 @@ if __name__ == "__main__":
     # 👉 接口参数
     DRAW_Z = 200.0  
     AIR_Z = 210.0   
-    AIR_MOVE_STEP = 0.5 # 采样更密，适应后续运动学要求
+    AIR_MOVE_STEP = 0.5 
     
     generator.generate(DRAW_Z, AIR_Z, AIR_MOVE_STEP)

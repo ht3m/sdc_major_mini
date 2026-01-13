@@ -59,7 +59,7 @@ if __name__ == "__main__":
     current_dir = os.path.dirname(os.path.abspath(__file__))
     img_dir = os.path.join(current_dir, "img")
     
-    INPUT_FILE = os.path.join(img_dir, "step07_joint_trajectory.json")
+    INPUT_FILE = os.path.join(img_dir, "step07_joint_trajectory_multicore.json")
     
     # === 输出文件定义 ===
     # 1. 包含元数据的完整文件 (供 Python/Debug 查看)
