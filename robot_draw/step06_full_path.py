@@ -214,8 +214,8 @@ if __name__ == "__main__":
     generator = StructuredPathGenerator(INPUT_FILE, OUTPUT_FILE)
 
     # 👉 接口参数
-    DRAW_Z = 200.0  
-    AIR_Z = 210.0   
+    DRAW_Z = 170.0  
+    AIR_Z = 180.0   
     AIR_MOVE_STEP = 0.5 
     
     generator.generate(DRAW_Z, AIR_Z, AIR_MOVE_STEP)
