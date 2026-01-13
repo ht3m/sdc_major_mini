@@ -9,12 +9,12 @@ class JointTrajectoryOptimizer:
         self.dt = 1.0 / frequency  # 8ms
         
         # === 速度配置 (关节角速度 rad/s) ===
-        self.SPEED_SCALE_DRAW = 0.06
-        self.SPEED_SCALE_AIR  = 0.13
+        self.SPEED_SCALE_DRAW = 0.15
+        self.SPEED_SCALE_AIR  = 0.30
         
         # === 停顿配置 (秒) ===
-        self.WAIT_START = 1.0
-        self.WAIT_CONN  = 1.0 
+        self.WAIT_START = 0.5
+        self.WAIT_CONN  = 0.5 
 
     def _get_cumulative_dist(self, joints):
         diffs = np.abs(np.diff(joints, axis=0))
