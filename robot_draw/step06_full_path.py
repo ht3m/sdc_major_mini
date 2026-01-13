@@ -18,14 +18,10 @@ class StructuredPathGenerator:
         
         dist = np.linalg.norm(p_end - p_start)
         
-        # 如果距离极小，直接返回终点，保证至少有一个点
         if dist < 1e-3:
             return [p_end.tolist()]
         
-        # 计算插值数量
         num_points = int(np.ceil(dist / step_size))
-        
-        # 生成 t 序列
         t_values = np.linspace(0, 1, num_points + 1)
         
         interpolated_points = []
@@ -56,13 +52,14 @@ class StructuredPathGenerator:
             return
 
         # ==========================================
-        # 🔥 修改点：应用 180 度旋转 (x=-x, y=-y)
+        # 🔥 修改点：应用 90 度旋转 (x -> -y, y -> x)
         # ==========================================
-        print("🔄 正在应用坐标变换: 旋转 180° (x -> -x, y -> -y)...")
+        print("🔄 正在应用坐标变换: 旋转 90° (x -> -y, y -> x)...")
         rotated_strokes = []
         for stroke in raw_strokes:
-            # 对每一笔画中的每一个点 (x, y) 取反
-            new_stroke = [[-pt[0], -pt[1]] for pt in stroke]
+            # pt[0] 是旧x, pt[1] 是旧y
+            # 新x = -旧y, 新y = 旧x
+            new_stroke = [[-pt[1], pt[0]] for pt in stroke]
             rotated_strokes.append(new_stroke)
         
         # 用旋转后的数据替换原始数据
@@ -71,8 +68,13 @@ class StructuredPathGenerator:
         # 同时也要处理 Meta 中的原点信息（如果有的话），保持逻辑一致
         origin_info = meta.get("paper_origin_robot_frame", None)
         if origin_info:
-            origin_info['x'] = -origin_info['x']
-            origin_info['y'] = -origin_info['y']
+            old_x = origin_info['x']
+            old_y = origin_info['y']
+            
+            # 更新原点坐标
+            origin_info['x'] = -old_y
+            origin_info['y'] = old_x
+            
             current_air_pos = np.array([origin_info['x'], origin_info['y'], air_z])
             print(f"✅ (已旋转) 起点设置为图纸原点: {current_air_pos}")
         else:
@@ -85,64 +87,51 @@ class StructuredPathGenerator:
         # 后续逻辑保持不变
         # ==========================================
 
-        # 结果容器：[Stroke1[Move, Drop, Draw, Lift], Stroke2[...], ...]
         structured_strokes = [] 
-
         total_points_count = 0
 
-        # 循环处理每一笔，生成标准的 4 段式结构
         for i, stroke in enumerate(raw_strokes):
-            stroke_segments = [] # 存放当前笔画的 4 个阶段
+            stroke_segments = [] 
             
-            # --- 关键点定义 ---
             stroke_start_2d = stroke[0]
             stroke_end_2d = stroke[-1]
 
-            # P_Hover_Start: 这一笔的开始上方
+            # P_Hover_Start
             p_hover_start = np.array([stroke_start_2d[0], stroke_start_2d[1], air_z])
-            # P_Start: 这一笔的落笔点
+            # P_Start
             p_draw_start  = np.array([stroke_start_2d[0], stroke_start_2d[1], draw_z])
-            # P_End: 这一笔的结束点
+            # P_End
             p_draw_end    = np.array([stroke_end_2d[0], stroke_end_2d[1], draw_z])
-            # P_Hover_End: 这一笔的结束上方
+            # P_Hover_End
             p_hover_end   = np.array([stroke_end_2d[0], stroke_end_2d[1], air_z])
 
-            # --- 阶段 1: Air Move (Move to Approach) ---
-            # 从“上一次的空中位置”移动到“当前笔画的上方”
+            # 1. Move
             seg_move = self.linear_interpolate(current_air_pos, p_hover_start, air_step_mm)
             stroke_segments.append(seg_move)
 
-            # --- 阶段 2: Drop (Vertical Down) ---
-            # 从“上方”垂直下降到“落笔点”
+            # 2. Drop
             seg_drop = self.linear_interpolate(p_hover_start, p_draw_start, air_step_mm)
             stroke_segments.append(seg_drop)
 
-            # --- 阶段 3: Draw (The actual stroke) ---
-            # 这一步比较特殊，因为 stroke 本身已经是点集了
+            # 3. Draw
             current_draw_points = []
             for pt in stroke:
                 current_draw_points.append([pt[0], pt[1], draw_z])
             stroke_segments.append(current_draw_points)
 
-            # --- 阶段 4: Lift (Vertical Up) ---
-            # 从“结束点”垂直抬起到“上方”
+            # 4. Lift
             seg_lift = self.linear_interpolate(p_draw_end, p_hover_end, air_step_mm)
             stroke_segments.append(seg_lift)
 
-            # 将这 4 段加入总列表
             structured_strokes.append(stroke_segments)
-            
-            # 更新状态：当前的空中位置变成了这一笔结束后的上方
             current_air_pos = p_hover_end
-
-            # 统计点数
             total_points_count += len(seg_move) + len(seg_drop) + len(current_draw_points) + len(seg_lift)
 
         # 保存
         output_data = {
             "meta": {
                 "source": "step06_structured_path",
-                "rotation": "180_degrees_xy_plane", # 记录一下旋转操作
+                "rotation": "90_degrees_counter_clockwise", # 更新描述
                 "structure_format": "[N_strokes, 4_segments, M_points, 3_coords]",
                 "segment_meaning": ["0:AirMove", "1:Drop", "2:Draw", "3:Lift"],
                 "total_strokes": len(structured_strokes),
@@ -171,14 +160,12 @@ class StructuredPathGenerator:
         
         print("🎨 正在绘制 3D 预览...")
         
-        # 颜色映射：Move(绿), Drop(黄), Draw(蓝), Lift(红)
         colors = ['green', 'orange', 'blue', 'red']
         styles = ['--', '--', '-', '--']
         labels = ['Move', 'Drop', 'Draw', 'Lift']
         added_labels = set()
 
         for stroke_segs in structured_data:
-            # stroke_segs 包含 4 个 list
             for i, seg_points in enumerate(stroke_segs):
                 pts = np.array(seg_points)
                 if len(pts) < 1: continue
@@ -192,11 +179,10 @@ class StructuredPathGenerator:
         ax.set_xlabel('X')
         ax.set_ylabel('Y')
         ax.set_zlabel('Z')
-        # 自动调整视角范围
         ax.set_zlim(draw_z - 10, air_z + 20)
         ax.view_init(elev=20, azim=-45)
         
-        plt.title(f"Structured 4-Stage Path (Rotated 180°)")
+        plt.title(f"Structured 4-Stage Path (Rotated 90°)")
         plt.legend()
         plt.show()
 
@@ -207,7 +193,6 @@ if __name__ == "__main__":
     current_dir = os.path.dirname(os.path.abspath(__file__))
     img_dir = os.path.join(current_dir, "img")
     
-    # 注意：这里读取的是 Step 05 的输出
     INPUT_FILE = os.path.join(img_dir, "step05_re_path.json")
     OUTPUT_FILE = os.path.join(img_dir, "step06_full_path.json")
     
