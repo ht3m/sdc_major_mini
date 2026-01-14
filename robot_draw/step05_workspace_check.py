@@ -267,11 +267,11 @@ if __name__ == "__main__":
     processor = PlanarPathProcessor(INPUT_FILE, OUTPUT_FILE)
     
     # 调整这些参数
-    TARGET_Z = 170.0  
+    TARGET_Z = 130.0  
     
     # 经验值：JAKA Mini 2 在垂直书写姿态下，最佳工作区通常在前方 200-450mm 之间
     # 建议将图纸放在 Y=0, X=300 附近
-    OFFSET_X = 175.0 
+    OFFSET_X = 180.0 
     OFFSET_Y = 75.0 
     
     # Pitch 参数在此版本中不再作为变量输入计算，因为几何解算已默认其为 90度 (垂直)
