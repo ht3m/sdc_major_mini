@@ -8,7 +8,7 @@ class TrajectoryStabilizer:
     def __init__(self):
         # === Configuration ===
         # Target Joint to fix (0-based index): 1 = Joint 2
-        self.TARGET_JOINT = 1  
+        self.TARGET_JOINT = 0  
         
         # Detection parameters
         self.CHECK_WINDOW = 5        # Check window size (frames)

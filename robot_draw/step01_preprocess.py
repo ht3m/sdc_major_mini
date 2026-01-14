@@ -157,7 +157,7 @@ if __name__ == "__main__":
     # 图片命名为 test.jpg 放在代码同一目录下
     current_dir = os.path.dirname(os.path.abspath(__file__))
     img_dir = os.path.join(current_dir, "img")
-    IMAGE_FILE = os.path.join(img_dir, "jiuming.jpg")
+    IMAGE_FILE = os.path.join(img_dir, "jizhou.jpg")
     OUTPUT_FILE = os.path.join(img_dir, "step01_preprocess.png")
     
     try:
