@@ -46,7 +46,6 @@ def forward_kinematics(joints):
         T = T @ Ti
     return T
 
-# 🔥🔥🔥 关键修改 1：加入 last_joints 参数实现“连续性惩罚” 🔥🔥🔥
 def ik_error_func(q, target_pos, target_rot_matrix, last_joints=None):
     T = forward_kinematics(q)
     pos_err = np.linalg.norm(T[:3, 3] - target_pos)
@@ -58,19 +57,17 @@ def ik_error_func(q, target_pos, target_rot_matrix, last_joints=None):
         if val < BOUNDS[i][0] or val > BOUNDS[i][1]:
             limit_penalty += 1000 * (abs(val) - abs(BOUNDS[i][1]))**2
 
-    # 连续性惩罚 (防止 180度 跳变)
+    # 连续性惩罚
     consistency_penalty = 0
     if last_joints is not None:
         diff = q - last_joints
-        # 全局差异惩罚
         consistency_penalty = 0.5 * np.linalg.norm(diff)
-        # J6 额外惩罚 (防止末端乱转)
         consistency_penalty += 0.5 * abs(diff[5]) 
 
     return pos_err * 1.0 + rot_err * 5.0 + limit_penalty + consistency_penalty
 
 # ==================================================================================
-# 2. Worker 函数 (修改了种子和调用方式)
+# 2. Worker 函数 (修改：记录失败坐标)
 # ==================================================================================
 def process_stroke_wrapper(args):
     segments, quat = args
@@ -79,20 +76,16 @@ def process_stroke_wrapper(args):
     count = 0
     last_sol = None 
     
+    # 🔥 新增：用于记录失败点的列表
+    failed_coords = []
+    
     target_rot = R.from_quat(quat).as_matrix()
     
-    # 🔥🔥🔥 关键修改 2：全向种子 (Omni-directional Seeds) 🔥🔥🔥
-    # 无论你的图纸旋转到了哪里 (前/后/左/右)，这里都有适合的初始姿态
     seeds = [
-        # 前方 (X+)
         np.array([0, 0, np.pi/2, 0, np.pi/2, 0]), 
-        # 左侧 (Y+) - 对应旋转 90度
         np.array([np.pi/2, 0, np.pi/2, 0, np.pi/2, 0]),
-        # 右侧 (Y-) - 对应旋转 -90度
         np.array([-np.pi/2, 0, np.pi/2, 0, np.pi/2, 0]),
-        # 后方 (X-) - 对应旋转 180度
         np.array([np.pi, 0, np.pi/2, 0, np.pi/2, 0]),
-        # 下探姿态 (通用)
         np.array([0, 0.5, 1.5, 0, 1.0, 0]), 
     ]
 
@@ -102,19 +95,17 @@ def process_stroke_wrapper(args):
             target_pos = np.array(pt)
             sol = None
             
-            # 1. Tracking 模式 (传入 last_sol 以利用连续性惩罚)
+            # 1. Tracking
             if last_sol is not None:
-                # 注意：这里把 last_sol 传给了 ik_error_func 的第3个参数
                 res = minimize(ik_error_func, last_sol, args=(target_pos, target_rot, last_sol),
                                method='SLSQP', bounds=BOUNDS, tol=1e-4)
                 if res.fun < 2.0:
                     sol = res.x
             
-            # 2. Global Search 模式 (Tracking 失败时启用)
+            # 2. Global Search
             if sol is None:
                 best_err = float('inf')
                 for s in seeds:
-                    # 全局搜索时不限制 last_joints (传 None)，允许它跳到最优解
                     res = minimize(ik_error_func, s, args=(target_pos, target_rot, None),
                                    method='SLSQP', bounds=BOUNDS, tol=1e-4)
                     if res.fun < best_err and res.fun < 1.0:
@@ -122,7 +113,6 @@ def process_stroke_wrapper(args):
                         sol = res.x
 
             if sol is not None:
-                # J6 翻转保护 (数学修正)
                 if last_sol is not None:
                     diff_j6 = sol[5] - last_sol[5]
                     if diff_j6 > np.pi: sol[5] -= 2*np.pi
@@ -131,7 +121,11 @@ def process_stroke_wrapper(args):
                 segment_joints.append(sol.tolist())
                 last_sol = sol
             else:
+                # 🔥🔥🔥 记录失败坐标 🔥🔥🔥
                 fails += 1
+                failed_coords.append(pt) # 记录当前的 [x, y, z]
+                
+                # 补救措施
                 if last_sol is not None:
                     segment_joints.append(last_sol.tolist())
                 else:
@@ -140,14 +134,13 @@ def process_stroke_wrapper(args):
             count += 1
         stroke_joints.append(segment_joints)
         
-    return {'joints': stroke_joints, 'fails': fails, 'count': count}
+    # 返回字典中增加 failed_coords
+    return {'joints': stroke_joints, 'fails': fails, 'count': count, 'failed_coords': failed_coords}
 
 # ==================================================================================
 # 3. 辅助工具 & 主程序
 # ==================================================================================
 def get_target_quat(angle_deg):
-    # 90 = 笔尖朝前 (X+)
-    # 180 = 笔尖朝下 (Z-)
     print(f"📐 目标姿态: 绕 Y 轴旋转 {angle_deg}°")
     r = R.from_euler('y', angle_deg, degrees=True)
     return r.as_quat()
@@ -165,7 +158,7 @@ if __name__ == "__main__":
     INPUT_FILE = os.path.join(img_dir, "step06_full_path.json")
     OUTPUT_FILE = os.path.join(img_dir, "step07_joint_trajectory_multicore.json")
 
-    # 🔥 设置：笔尖垂直向下 (最通用，不易撞限位)
+    # 垂直向下姿态
     TARGET_PITCH = 180.0 
     target_quat = get_target_quat(TARGET_PITCH)
 
@@ -189,18 +182,27 @@ if __name__ == "__main__":
 
     with ProcessPoolExecutor() as executor:
         results = executor.map(process_stroke_wrapper, stroke_tasks)
+        
         for i, res in enumerate(results):
             final_structured_joints[i] = res['joints']
             fail_count += res['fails']
             total_processed += res['count']
+            
+            # 🔥🔥🔥 打印具体的失败坐标 🔥🔥🔥
+            if res['fails'] > 0:
+                print(f"\n❌ [Error] 笔画 {i+1} 出现 {res['fails']} 个解算失败点:")
+                for fail_pt in res['failed_coords']:
+                    # 格式化打印坐标，方便阅读
+                    print(f"   -> 坐标 (XYZ): [{fail_pt[0]:.2f}, {fail_pt[1]:.2f}, {fail_pt[2]:.2f}]")
+            
             if (i+1) % 10 == 0:
                 print(f"\r   - 进度: {i+1}/{len(stroke_tasks)}", end="")
 
     total_time = time.time() - start_time
-    print(f"\n✅ 完成! 耗时: {total_time:.2f}s | 速度: {total_processed/total_time:.1f} pts/s")
+    print(f"\n\n✅ 完成! 耗时: {total_time:.2f}s | 速度: {total_processed/total_time:.1f} pts/s")
     
     if fail_count > 0:
-        print(f"⚠️ 警告: {fail_count} 个点失败")
+        print(f"⚠️ 总计警告: {fail_count} 个点解算失败，请检查上述坐标是否超出机械臂工作空间。")
 
     output_data = {
         "meta": {

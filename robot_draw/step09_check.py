@@ -12,8 +12,8 @@ class TrajectoryStabilizer:
         
         # Detection parameters
         self.CHECK_WINDOW = 5        # Check window size (frames)
-        self.DETECT_THRESHOLD = 3.0  # Detection threshold (degrees)
-        self.RECOVERY_THRESHOLD = 1.0 # Recovery threshold (degrees)
+        self.DETECT_THRESHOLD = 5.0  # Detection threshold (degrees)
+        self.RECOVERY_THRESHOLD = 10.0 # Recovery threshold (degrees)
 
     def fix_joint_jumps(self, joints):
         """
