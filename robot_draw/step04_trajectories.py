@@ -394,10 +394,10 @@ if __name__ == "__main__":
         planner.generate_trajectories()
         
         # 2. 智能平滑
-        planner.smooth_and_resample(smoothing=5.0, step_size=0.5)
+        planner.smooth_and_resample(smoothing=10, step_size=0.5)
         
         # 3. 导出
-        planner.export_json(JSON_FILE, canvas_size_mm=(150, 300), physical_step_mm=0.5)
+        planner.export_json(JSON_FILE, canvas_size_mm=(180, 300), physical_step_mm=0.5)
         
         # 4. 可视化
         planner.visualize_order(save_path=OUTPUT_VIS_FILE)
