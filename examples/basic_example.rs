@@ -3,7 +3,7 @@ use robot_behavior::behavior::*;
 use std::f64::consts::FRAC_PI_6;
 
 fn main() -> anyhow::Result<()> {
-    let mut robot = JakaMini2::new("10.5.5.100");
+    let mut robot = JakaMini2::new("192.168.1.1");
 
     // 完全等同于内置函数 robot._power_on()?;
     robot.init()?;
@@ -12,7 +12,7 @@ fn main() -> anyhow::Result<()> {
     // 此时你才可以发送运动指令
     //TODO:设置运动
     robot.move_joint(&[FRAC_PI_6; 6])?;
-    robot.move_to(MotionType::Joint([0.; 6]))?;
+   // robot.move_to(MotionType::Joint([0.; 6]))?;
 
     robot.disable()?;
     // 完全等同于内置函数 robot._power_off()?;
@@ -28,28 +28,28 @@ mod tests {
     use robot_behavior::behavior::*;
     #[test]
     fn power_on() -> anyhow::Result<()> {
-        let mut robot = super::JakaMini2::new("10.5.5.100");
+        let mut robot = super::JakaMini2::new("192.168.1.1");
         robot.init()?;
         Ok(())
     }
 
     #[test]
     fn power_off() -> anyhow::Result<()> {
-        let mut robot = super::JakaMini2::new("10.5.5.100");
+        let mut robot = super::JakaMini2::new("192.168.1.1");
         robot.shutdown()?;
         Ok(())
     }
 
     #[test]
     fn enable() -> anyhow::Result<()> {
-        let mut robot = super::JakaMini2::new("10.5.5.100");
+        let mut robot = super::JakaMini2::new("192.168.1.1");
         robot.enable()?;
         Ok(())
     }
 
     #[test]
     fn disable() -> anyhow::Result<()> {
-        let mut robot = super::JakaMini2::new("10.5.5.100");
+        let mut robot = super::JakaMini2::new("192.168.1.1");
         robot.disable()?;
         Ok(())
     }

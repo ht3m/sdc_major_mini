@@ -5,20 +5,20 @@ use libjaka::JakaMini2;
 use robot_behavior::behavior::*;
 
 fn main() -> Result<()> {
-    let mut robot = JakaMini2::new("10.5.5.100");
+    let mut robot = JakaMini2::new("192.168.1.1");
 
     robot.move_joint(&[
-        0.43642145501756757,
-        0.043303908409149966,
-        -1.9405468867228346,
-        -1.4748536326574774e-05,
-        -1.2443031821789015,
-        0.4364556645834642,
+      -1.19742476853498,
+      0.018282708915888905,
+      2.0349804153426794,
+      2.9468296676164088e-06,
+      1.0884027170493922,
+      0.17453292519943334
     ])?;
 
     robot.move_traj_from_file("robot_draw\\img\\step08_optimized_trajectory_rust.json")?;
 
-    sleep(Duration::from_secs(100));
+    sleep(Duration::from_secs(10000));
 
     Ok(())
 }
@@ -30,13 +30,13 @@ mod test {
 
     #[test]
     fn init() {
-        let mut robot = JakaMini2::new("10.5.5.100");
+        let mut robot = JakaMini2::new("192.168.1.1");
         robot.init();
     }
 
     #[test]
     fn enable() {
-        let mut robot = JakaMini2::new("10.5.5.100");
+        let mut robot = JakaMini2::new("192.168.1.1");
         robot.enable();
     }
 }
