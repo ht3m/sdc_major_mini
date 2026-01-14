@@ -2,92 +2,120 @@ import json
 import numpy as np
 import os
 import matplotlib.pyplot as plt
-from itertools import groupby, count
 
 class TrajectoryStabilizer:
     def __init__(self):
         # === Configuration ===
-        # Target Joint to fix (0-based index): 1 = Joint 2
+        # Target Joint to fix (0-based index): 0 = Joint 1
         self.TARGET_JOINT = 0  
         
         # Detection parameters
         self.CHECK_WINDOW = 5        # Check window size (frames)
         self.DETECT_THRESHOLD = 5.0  # Detection threshold (degrees)
-        self.RECOVERY_THRESHOLD = 10.0 # Recovery threshold (degrees)
+        self.RECOVERY_THRESHOLD = 8.0 # Recovery threshold (degrees)
 
     def fix_joint_jumps(self, joints):
         """
-        Apply 'Sample and Hold' strategy to remove artifacts from a specific joint.
+        Strategy: Preserve Length + Local Interpolation
+        1. Detect jump in TARGET_JOINT.
+        2. Find recovery point.
+        3. Linearly interpolate TARGET_JOINT values between start and recovery.
+        4. Keep other joints UNCHANGED.
         """
         print(f"🔧 Stabilizing Joint {self.TARGET_JOINT + 1}...")
         
-        # Extract data for the target joint (convert to degrees for processing)
-        original_rad = joints[:, self.TARGET_JOINT].copy()
-        fixed_deg = np.degrees(original_rad)
+        # Make a copy to modify
+        fixed_joints = joints.copy()
+        n_frames, n_joints = fixed_joints.shape
         
-        fix_count = 0
-        modified_indices = []
+        # Convert to degrees for easier threshold checking
+        target_vals_deg = np.degrees(fixed_joints[:, self.TARGET_JOINT])
         
         i = self.CHECK_WINDOW
-        total_len = len(fixed_deg)
+        fix_count = 0
+        modified_ranges = [] # Store (start, end) for visualization
         
-        while i < total_len - self.CHECK_WINDOW:
-            # A. Get current window
-            current_window = fixed_deg[i : i + self.CHECK_WINDOW]
-            
-            # B. Check for jump (Peak-to-Peak)
-            ptp = np.ptp(current_window)
+        while i < n_frames - self.CHECK_WINDOW:
+            # Check window for Jumps
+            window_vals = target_vals_deg[i : i + self.CHECK_WINDOW]
+            ptp = np.ptp(window_vals)
             
             if ptp > self.DETECT_THRESHOLD:
                 # === Jump Detected ===
+                # Assume i-1 is the last stable point
+                start_idx = i - 1
+                start_val = fixed_joints[start_idx, self.TARGET_JOINT]
+                start_val_deg = target_vals_deg[start_idx]
                 
-                # 1. Sample: Calculate stable mean before the jump
-                prev_window = fixed_deg[i - self.CHECK_WINDOW : i]
-                stable_target = np.mean(prev_window)
-                
-                # 2. Search Recovery: Look ahead for when it stabilizes
+                # Search for recovery point
                 recovery_idx = -1
-                for k in range(i + 1, total_len):
-                    diff = abs(fixed_deg[k] - stable_target)
-                    if diff <= self.RECOVERY_THRESHOLD:
+                for k in range(i + 1, n_frames):
+                    val_k_deg = target_vals_deg[k]
+                    # Check if value returns to stable range
+                    if abs(val_k_deg - start_val_deg) <= self.RECOVERY_THRESHOLD:
                         recovery_idx = k
                         break
                 
-                # 3. Hold & Fix
                 if recovery_idx != -1:
-                    # Flatten the jump area to the stable value
-                    fixed_deg[i : recovery_idx] = stable_target
-                    modified_indices.extend(range(i, recovery_idx))
-                    fix_count += 1
-                    i = recovery_idx 
+                    # === Recovery Found ===
+                    end_val = fixed_joints[recovery_idx, self.TARGET_JOINT]
+                    
+                    # Calculate number of frames to interpolate
+                    # range is from start_idx+1 to recovery_idx-1
+                    # Total steps including start and end
+                    steps = recovery_idx - start_idx
+                    
+                    # Generate interpolated values for TARGET_JOINT
+                    # np.linspace includes start and end, we extract the middle part
+                    interp_values = np.linspace(start_val, end_val, num=steps+1)
+                    
+                    # Apply interpolation (excluding start, including end to ensure continuity)
+                    # Actually better to exclude both if we want to be strict, 
+                    # but assigning from i to recovery_idx (exclusive) matches the gap.
+                    
+                    # Indices to replace: i ... recovery_idx-1
+                    # interp_values[1:-1] are the points strictly between start and end
+                    
+                    # Example: start=10, jump at 11, 12, recov at 13.
+                    # i=11. start_idx=10. recovery_idx=13.
+                    # steps = 3.
+                    # linspace(10, 13, num=4) -> [v10, v11', v12', v13]
+                    # we want to replace 11 and 12.
+                    
+                    gap_values = interp_values[1:-1]
+                    
+                    # Check length match
+                    expected_len = recovery_idx - i # (13 - 11 = 2)
+                    if len(gap_values) != expected_len:
+                        # Fallback for edge cases (should not happen with linspace logic above)
+                        print(f"⚠️ Interpolation length mismatch at {i}")
+                    else:
+                        fixed_joints[i:recovery_idx, self.TARGET_JOINT] = gap_values
+                        modified_ranges.append((i, recovery_idx))
+                        fix_count += 1
+                        print(f"   -> Fixed range [{i}:{recovery_idx}]. Interpolated {len(gap_values)} frames.")
+
+                    # Move index forward
+                    i = recovery_idx
                 else:
-                    # If no recovery found, hold until end
-                    fixed_deg[i:] = stable_target
-                    modified_indices.extend(range(i, total_len))
-                    print(f"⚠️ Warning: Could not recover from frame {i}, holding value until end.")
-                    break
+                    # No recovery found, skip frame
+                    i += 1
             else:
                 i += 1
-
-        # Apply changes back to the main array (convert back to radians)
-        joints[:, self.TARGET_JOINT] = np.radians(fixed_deg)
-        
+                
         print(f"✅ Joint {self.TARGET_JOINT + 1} Stabilization Complete.")
         print(f"   - Glitches fixed: {fix_count}")
-        print(f"   - Total frames modified: {len(modified_indices)}")
         
-        return joints, modified_indices
+        return fixed_joints, modified_ranges
 
-    def visualize_changes(self, original_joints, fixed_joints, modified_indices):
+    def visualize_changes(self, original_joints, fixed_joints, modified_ranges):
         """ Generate a comparison plot """
-        if len(modified_indices) == 0:
-            return
-
         print("📊 Generating comparison plot...")
         j_idx = self.TARGET_JOINT
         orig_deg = np.degrees(original_joints[:, j_idx])
         fix_deg = np.degrees(fixed_joints[:, j_idx])
 
+        # sharex=True is safe now because lengths are preserved
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
         
         # Plot Original
@@ -96,35 +124,24 @@ class TrajectoryStabilizer:
         ax1.set_ylabel("Angle (deg)")
         ax1.grid(True, alpha=0.3)
         
-        # Mark jumps on original
-        if len(modified_indices) > 0:
-            jump_y = orig_deg[modified_indices]
-            ax1.scatter(modified_indices, jump_y, color='red', s=10, alpha=0.5, label='Jumps Detected')
-            ax1.legend()
-
         # Plot Fixed
         ax2.plot(fix_deg, color='#2ca02c', linewidth=1.5, label='Stabilized')
-        ax2.set_title(f"Step 09: Joint {j_idx+1} Stabilized", fontweight='bold')
+        ax2.set_title(f"Step 09: Joint {j_idx+1} Stabilized (Length Preserved)", fontweight='bold')
         ax2.set_ylabel("Angle (deg)")
         ax2.set_xlabel("Frame Index")
         ax2.grid(True, alpha=0.3)
-
-        # Highlight modified areas
-        modified_indices = sorted(list(set(modified_indices)))
-        def as_range(g):
-            l = list(g)
-            return l[0], l[-1]
-        ranges = [as_range(g) for _, g in groupby(modified_indices, key=lambda n, c=count(): n-next(c))]
         
-        for start, end in ranges:
-            ax2.axvspan(start, end, color='red', alpha=0.15)
+        # Highlight modified areas
+        for start, end in modified_ranges:
+            ax1.axvspan(start, end, color='red', alpha=0.15, label='Jump' if start == modified_ranges[0][0] else "")
+            ax2.axvspan(start, end, color='green', alpha=0.15, label='Interpolated' if start == modified_ranges[0][0] else "")
 
         plt.tight_layout()
         # Save plot to img folder
         plot_path = os.path.join(os.path.dirname(OUTPUT_FILE_FULL), "step09_stabilization_report.png")
         plt.savefig(plot_path)
         print(f"📈 Report saved: {plot_path}")
-        # plt.show() # Uncomment if you want to see the window
+        # plt.show() 
 
 if __name__ == "__main__":
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -159,10 +176,10 @@ if __name__ == "__main__":
 
     # === Process ===
     stabilizer = TrajectoryStabilizer()
-    stabilized_joints, mod_indices = stabilizer.fix_joint_jumps(joints_np)
+    stabilized_joints, modified_ranges = stabilizer.fix_joint_jumps(joints_np)
     
     # === Visualization ===
-    stabilizer.visualize_changes(original_joints_np, stabilized_joints, mod_indices)
+    stabilizer.visualize_changes(original_joints_np, stabilized_joints, modified_ranges)
 
     # === Save Files ===
     
@@ -171,7 +188,7 @@ if __name__ == "__main__":
         "meta": {
             "source": "step09_stabilizer",
             "parent_meta": meta,
-            "modifications": f"Fixed J{stabilizer.TARGET_JOINT+1} artifacts",
+            "modifications": f"Fixed J{stabilizer.TARGET_JOINT+1} artifacts (In-place Interpolation)",
             "count": len(stabilized_joints)
         },
         "joints": stabilized_joints.tolist()

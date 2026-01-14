@@ -455,14 +455,14 @@ if __name__ == "__main__":
         builder.build_graph() 
         
         # 2. 合并节点 (使用延迟删除，避免断链)
-        builder.merge_close_nodes(distance_threshold=5.0) 
+        builder.merge_close_nodes(distance_threshold=10.0) 
         
         # 3. 兜底扫描 (挽救合并或追踪中遗失的路径)
         builder.salvage_missing_segments(min_length=10)
 
         # 4. 美容 (修剪毛刺 & 去噪) ---
-        builder.prune_spurs(min_length=5) # 小于20像素的短枝剪掉
-        builder.remove_small_components(min_nodes=5, min_total_length=5) # 极小的孤立噪点删掉
+        builder.prune_spurs(min_length=3) # 小于20像素的短枝剪掉
+        builder.remove_small_components(min_nodes=3, min_total_length=3) # 极小的孤立噪点删掉
         
         # --- 5. 结果输出 ---
         builder.visualize("Final Optimized Graph", save_path=OUTPUT_VIS_FILE)
