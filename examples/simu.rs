@@ -34,7 +34,7 @@ fn main() -> Result<()> {
 
     println!("📂 读取并执行轨迹...");
 
-    let file_path = "./robot_draw/img/step08_optimized_trajectory_rust.json";
+    let file_path = "./robot_draw/img/step09_stable_traj_rust.json";
 
     let file = File::open(file_path).context("无法打开轨迹文件")?;
     let reader = BufReader::new(file);
